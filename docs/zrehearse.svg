@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 340" role="img" aria-labelledby="t d">
+  <title id="t">zrehearse</title>
+  <desc id="d">A chain of blocks walks across a stage. A spotlight marks the block where the network upgrade activates.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#14121f"/>
+      <stop offset="1" stop-color="#231c33"/>
+    </linearGradient>
+    <linearGradient id="curtain" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#7a1f2b"/>
+      <stop offset="0.5" stop-color="#a8323f"/>
+      <stop offset="1" stop-color="#7a1f2b"/>
+    </linearGradient>
+    <radialGradient id="spot" cx="0.5" cy="0" r="1">
+      <stop offset="0" stop-color="#f4b728" stop-opacity="0.55"/>
+      <stop offset="1" stop-color="#f4b728" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1200" height="340" fill="url(#bg)"/>
+
+  <!-- curtains -->
+  <path d="M0 0 H150 C130 90 165 200 120 340 H0 Z" fill="url(#curtain)"/>
+  <path d="M1200 0 H1050 C1070 90 1035 200 1080 340 H1200 Z" fill="url(#curtain)"/>
+  <rect x="0" y="0" width="1200" height="22" fill="#5e1620"/>
+
+  <!-- spotlight on the activation block -->
+  <polygon points="560,0 640,0 760,290 440,290" fill="url(#spot)"/>
+
+  <!-- stage floor -->
+  <rect x="120" y="270" width="960" height="10" rx="3" fill="#3b2f52"/>
+
+  <!-- blocks before activation -->
+  <g fill="#2c2540" stroke="#8c7fb3" stroke-width="2">
+    <rect x="200" y="214" width="56" height="56" rx="8"/>
+    <rect x="290" y="214" width="56" height="56" rx="8"/>
+    <rect x="380" y="214" width="56" height="56" rx="8"/>
+    <rect x="470" y="214" width="56" height="56" rx="8"/>
+  </g>
+  <g stroke="#8c7fb3" stroke-width="3">
+    <line x1="256" y1="242" x2="290" y2="242"/>
+    <line x1="346" y1="242" x2="380" y2="242"/>
+    <line x1="436" y1="242" x2="470" y2="242"/>
+    <line x1="526" y1="242" x2="566" y2="242"/>
+    <line x1="634" y1="242" x2="674" y2="242"/>
+    <line x1="730" y1="242" x2="764" y2="242"/>
+    <line x1="820" y1="242" x2="854" y2="242"/>
+  </g>
+
+  <!-- the activation block -->
+  <rect x="566" y="206" width="68" height="68" rx="10" fill="#f4b728" stroke="#fff3c4" stroke-width="3"/>
+  <text x="600" y="248" text-anchor="middle" font-family="ui-monospace, Menlo, monospace" font-size="20" font-weight="700" fill="#1d1630">NU</text>
+
+  <!-- blocks after activation -->
+  <g fill="#1f3b33" stroke="#5fd3a5" stroke-width="2">
+    <rect x="674" y="214" width="56" height="56" rx="8"/>
+    <rect x="764" y="214" width="56" height="56" rx="8"/>
+    <rect x="854" y="214" width="56" height="56" rx="8"/>
+  </g>
+  <g fill="#5fd3a5" font-family="ui-monospace, Menlo, monospace" font-size="22" text-anchor="middle">
+    <text x="702" y="250">✓</text>
+    <text x="792" y="250">✓</text>
+    <text x="882" y="250">✓</text>
+  </g>
+
+  <text x="600" y="92" text-anchor="middle" font-family="ui-monospace, Menlo, monospace" font-size="58" font-weight="700" fill="#f6efe2">zrehearse</text>
+  <text x="600" y="132" text-anchor="middle" font-family="ui-sans-serif, Helvetica, Arial, sans-serif" font-size="20" fill="#cbbfe6">dress rehearsals for Zcash network upgrades</text>
+</svg>
