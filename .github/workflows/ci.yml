@@ -16,14 +16,14 @@ jobs:
           persist-credentials: false
       - name: Toolchain
         run: rustup toolchain install stable --profile minimal --component clippy && rustup default stable
-      - name: Build, clippy, unit tests
-        run: sh scripts/gate-build.sh
+      - name: Clippy
+        run: cargo clippy --all-targets -- -D warnings
+      - name: Unit tests
+        run: cargo test
       - name: Pull Zebra
         run: docker pull zfnd/zebra:6.2.3
-      - name: Rehearse NU6.3
-        run: sh scripts/gate-e2e.sh
-      - name: Failing project must fail the run
-        run: sh scripts/gate-negative.sh
+      - name: Rehearsals
+        run: cargo test --test rehearse -- --ignored
       - name: Upload reports
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

@@ -122,10 +122,10 @@ The upgrade order is the `UPGRADES` table in `src/plan.rs`. When a Zebra release
 
 ## Development
 
-`scripts/gate-*.sh` hold the checks this repository is held to. `gate-e2e.sh` and `gate-negative.sh` run real rehearsals, so they need Docker and the Zebra image.
+The tests in `tests/rehearse.rs` run real rehearsals, so they need Docker and the Zebra image. One rehearses `examples/nu6_3.toml` and must pass. The other rehearses `examples/failing_project.toml` and must fail.
 
 ```sh
-sh scripts/gate-build.sh      # build, clippy with -D warnings, unit tests
-sh scripts/gate-e2e.sh        # a passing rehearsal end to end
-sh scripts/gate-negative.sh   # a failing project must fail the run
+cargo clippy --all-targets -- -D warnings
+cargo test                                # unit tests
+cargo test --test rehearse -- --ignored   # real rehearsals
 ```
