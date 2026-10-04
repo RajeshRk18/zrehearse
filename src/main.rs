@@ -1,4 +1,4 @@
-//! `zrehearse`: dress rehearsals for Zcash network upgrades.
+//! zrehearse runs dress rehearsals for Zcash network upgrades.
 //!
 //! It starts a throwaway regtest Zebra node with one upgrade set to activate at
 //! a chosen height, mines across that height, checks the upgrade really took

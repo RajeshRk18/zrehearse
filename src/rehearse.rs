@@ -1,4 +1,4 @@
-//! One rehearsal: start the node, mine across the activation height, check the
+//! One rehearsal. Start the node, mine across the activation height, check the
 //! upgrade really activated, then run each project against the node.
 
 use crate::node::Node;
@@ -185,8 +185,8 @@ fn run_project(project: &Project, plan: &Plan, node: &Node, report: &Report, out
                 break;
             }
             Ok(None) if started.elapsed() >= timeout => {
-                // ponytail: kills only the `sh` process; a project that forks
-                // background jobs should clean them up itself.
+                // ponytail: kills only the `sh` process. A project that forks
+                // background jobs has to clean them up itself.
                 let _ = child.kill();
                 let _ = child.wait();
                 result.timed_out = true;
