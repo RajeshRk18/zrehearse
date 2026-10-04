@@ -4,7 +4,7 @@
 
 Dress rehearsals for Zcash network upgrades.
 
-Wallets, SDKs and light servers tend to find out about a network upgrade after it activates on mainnet. After NU6.1, WebZjs could not shield ([ChainSafe/WebZjs#166](https://github.com/ChainSafe/WebZjs/issues/166)). Ywallet hit the same consensus branch ID error ([hhanh00/zwallet#266](https://github.com/hhanh00/zwallet/issues/266)). On 2026-10-04, a public lightwalletd still could not serve any block after the Ironwood (NU6.3) activation, while its health info looked fine.
+Wallets, SDKs and light servers tend to find out about a network upgrade after it activates on mainnet. After NU6.1, WebZjs could not shield ([ChainSafe/WebZjs#166](https://github.com/ChainSafe/WebZjs/issues/166)). Ywallet hit the same consensus branch ID error ([hhanh00/zwallet#266](https://github.com/hhanh00/zwallet/issues/266)). On 2026-10-04, a public lightwalletd failed on 38 of 40 sampled blocks after the Ironwood (NU6.3) activation, while its health info looked fine.
 
 zrehearse moves that moment to your CI. It starts a throwaway regtest Zebra node with one upgrade set to activate at a height you pick. It mines across that height and checks that the upgrade really took effect. Then it runs your own test command against the node and reports pass or fail.
 
