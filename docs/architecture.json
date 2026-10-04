@@ -1,0 +1,220 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "zrehearse",
+    "quality_profile": "showcase"
+  },
+  "components": [
+    {
+      "id": "plan",
+      "type": "frontend",
+      "label": "plan.toml",
+      "sublabel": "image, upgrade, projects",
+      "pos": [
+        40,
+        260
+      ],
+      "size": [
+        140,
+        60
+      ]
+    },
+    {
+      "id": "cli",
+      "type": "backend",
+      "label": "zrehearse run",
+      "sublabel": "main.rs",
+      "pos": [
+        240,
+        260
+      ],
+      "size": [
+        140,
+        60
+      ]
+    },
+    {
+      "id": "planmod",
+      "type": "backend",
+      "label": "plan",
+      "sublabel": "zebrad.toml render",
+      "pos": [
+        240,
+        100
+      ],
+      "size": [
+        140,
+        60
+      ]
+    },
+    {
+      "id": "rehearse",
+      "type": "backend",
+      "label": "rehearse",
+      "sublabel": "checks + projects",
+      "pos": [
+        440,
+        260
+      ],
+      "size": [
+        140,
+        60
+      ]
+    },
+    {
+      "id": "node",
+      "type": "backend",
+      "label": "node",
+      "sublabel": "docker + JSON-RPC",
+      "pos": [
+        640,
+        260
+      ],
+      "size": [
+        140,
+        60
+      ]
+    },
+    {
+      "id": "zebrad",
+      "type": "external",
+      "label": "zebrad (regtest)",
+      "sublabel": "Docker container",
+      "pos": [
+        880,
+        260
+      ],
+      "size": [
+        150,
+        60
+      ]
+    },
+    {
+      "id": "projects",
+      "type": "external",
+      "label": "project tests",
+      "sublabel": "sh -c, ZREHEARSE_* env",
+      "pos": [
+        640,
+        430
+      ],
+      "size": [
+        140,
+        60
+      ]
+    },
+    {
+      "id": "report",
+      "type": "database",
+      "label": "report.json",
+      "sublabel": "+ zebrad.log, project logs",
+      "pos": [
+        440,
+        430
+      ],
+      "size": [
+        150,
+        60
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "read",
+      "from": "plan",
+      "to": "cli",
+      "label": "load",
+      "variant": "emphasis"
+    },
+    {
+      "id": "render",
+      "from": "cli",
+      "to": "planmod",
+      "label": "validate",
+      "fromSide": "top",
+      "toSide": "bottom"
+    },
+    {
+      "id": "drive",
+      "from": "cli",
+      "to": "rehearse",
+      "label": "run",
+      "variant": "emphasis"
+    },
+    {
+      "id": "boot",
+      "from": "rehearse",
+      "to": "node",
+      "label": "start, mine",
+      "variant": "emphasis"
+    },
+    {
+      "id": "rpc",
+      "from": "node",
+      "to": "zebrad",
+      "label": "JSON-RPC",
+      "variant": "emphasis"
+    },
+    {
+      "id": "spawn",
+      "from": "rehearse",
+      "to": "projects",
+      "label": "after activation",
+      "fromSide": "bottom",
+      "toSide": "left",
+      "variant": "dashed"
+    },
+    {
+      "id": "call",
+      "from": "projects",
+      "to": "zebrad",
+      "label": "RPC URL",
+      "fromSide": "right",
+      "toSide": "bottom",
+      "variant": "dashed"
+    },
+    {
+      "id": "write",
+      "from": "rehearse",
+      "to": "report",
+      "label": "results",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelAt": [
+        515,
+        375
+      ]
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Activation checks",
+      "items": [
+        "pending one block before",
+        "active at the height",
+        "activation block readable",
+        "chain grows after"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Projects",
+      "items": [
+        "run only if checks pass",
+        "timeout per project",
+        "exit 0 means pass"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Cleanup",
+      "items": [
+        "container removed on exit",
+        "label=zrehearse for leftovers",
+        "--keep to inspect"
+      ]
+    }
+  ]
+}
