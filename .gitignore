@@ -2,3 +2,5 @@
 GATES.md
 /out
 out-*.log
+.unlazy/
+.unlazy-hook-state.json
