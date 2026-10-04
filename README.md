@@ -2,9 +2,9 @@
 
 # zrehearse
 
-Dress rehearsals for Zcash network upgrades.
+Network upgrade rehearsals for downstream Zcash projects.
 
-Wallets, SDKs and light servers tend to find out about a network upgrade after it activates on mainnet. After NU6.1, WebZjs could not shield ([ChainSafe/WebZjs#166](https://github.com/ChainSafe/WebZjs/issues/166)). Ywallet hit the same consensus branch ID error ([hhanh00/zwallet#266](https://github.com/hhanh00/zwallet/issues/266)). On 2026-10-04, a public lightwalletd failed on 38 of 40 sampled blocks after the Ironwood (NU6.3) activation, while its health info looked fine.
+A Zcash network upgrade changes the consensus rules at a fixed block height ([ZIP 200](https://zips.z.cash/zip-0200)). Each upgrade has its own consensus branch ID, and transaction signatures commit to it. Wallets, SDKs and light servers that build transactions or serve blocks must follow the new rules from the activation height onward. If they do not, they break when the upgrade activates.
 
 zrehearse moves that moment to your CI. It starts a throwaway regtest Zebra node with one upgrade set to activate at a height you pick. It mines across that height and checks that the upgrade really took effect. Then it runs your own test command against the node and reports pass or fail.
 
