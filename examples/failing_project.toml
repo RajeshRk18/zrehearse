@@ -1,0 +1,16 @@
+# Negative control: the node activates fine, but the project fails, so the
+# whole rehearsal must fail.
+name = "failing project"
+
+[node]
+image = "zfnd/zebra:6.2.3"
+
+[upgrade]
+name = "NU6.3"
+height = 10
+blocks_after = 2
+
+[[project]]
+name = "always-fails"
+run = "echo 'pretend a wallet test broke'; exit 3"
+timeout_secs = 30

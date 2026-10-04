@@ -1,0 +1,21 @@
+# Rehearse NU6.3 (Ironwood) on Zebra 6.2.3, activating at regtest height 20.
+name = "nu6.3 on zebra 6.2.3"
+
+[node]
+image = "zfnd/zebra:6.2.3"
+
+[upgrade]
+name = "NU6.3"
+height = 20
+blocks_after = 5
+
+# A stand-in for a real project's test suite: it asks the node for its chain
+# tip branch ID and fails unless the upgrade is the one in force.
+[[project]]
+name = "rpc-smoke"
+run = '''
+curl -sf -X POST -H 'Content-Type: application/json' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"getblockchaininfo","params":[]}' \
+  "$ZREHEARSE_RPC_URL" | grep -q "\"chaintip\":\"$ZREHEARSE_BRANCH_ID\""
+'''
+timeout_secs = 60
