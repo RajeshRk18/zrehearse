@@ -1,0 +1,32 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  gates:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - name: Toolchain
+        run: rustup toolchain install stable --profile minimal --component clippy && rustup default stable
+      - name: Build, clippy, unit tests
+        run: sh scripts/gate-build.sh
+      - name: Pull Zebra
+        run: docker pull zfnd/zebra:6.2.3
+      - name: Rehearse NU6.3
+        run: sh scripts/gate-e2e.sh
+      - name: Failing project must fail the run
+        run: sh scripts/gate-negative.sh
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: rehearsal-reports
+          path: out/
