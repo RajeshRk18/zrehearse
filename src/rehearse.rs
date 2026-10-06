@@ -62,7 +62,11 @@ pub fn run(plan: &Plan, out: &Path, keep: bool) -> Result<Report> {
     let node = Node::start(&plan.node.image, &config, &plan.node.miner_address, keep)?;
     let env_ok = activation_checks(plan, &node, &mut report);
     if let Err(e) = &env_ok {
-        report.checks.push(Check { name: "rehearsal setup".into(), passed: false, detail: format!("{e:#}") });
+        report.checks.push(Check {
+            name: "rehearsal setup".into(),
+            passed: false,
+            detail: format!("{e:#}"),
+        });
     }
     let env_ok = env_ok.is_ok() && report.checks.iter().all(|c| c.passed);
 
@@ -87,7 +91,10 @@ pub fn run(plan: &Plan, out: &Path, keep: bool) -> Result<Report> {
 
     std::fs::write(out.join("zebrad.log"), node.logs())?;
     report.passed = env_ok && report.projects.iter().all(|p| p.passed);
-    std::fs::write(out.join("report.json"), serde_json::to_string_pretty(&report)? + "\n")?;
+    std::fs::write(
+        out.join("report.json"),
+        serde_json::to_string_pretty(&report)? + "\n",
+    )?;
     Ok(report)
 }
 
@@ -105,26 +112,51 @@ fn activation_checks(plan: &Plan, node: &Node, report: &mut Report) -> Result<()
         .with_context(|| format!("zebrad does not list {target} in getblockchaininfo.upgrades"))?;
     report.branch_id = Some(branch.clone());
     let next = info["consensus"]["nextblock"].as_str().unwrap_or_default();
-    check(report, "pending one block before activation",
+    check(
+        report,
+        "pending one block before activation",
         upgrade["status"] == "pending" && upgrade["activationheight"] == height && next == branch,
-        format!("tip {}, status {}, nextblock {next}, expected branch {branch}", height - 1, upgrade["status"]));
+        format!(
+            "tip {}, status {}, nextblock {next}, expected branch {branch}",
+            height - 1,
+            upgrade["status"]
+        ),
+    );
 
     node.mine(1)?;
     let info = node.rpc("getblockchaininfo", json!([]))?;
     let (_, upgrade) = find_upgrade(&info, target).context("upgrade vanished after activation")?;
     let tip_branch = info["consensus"]["chaintip"].as_str().unwrap_or_default();
-    check(report, "active at the activation height",
+    check(
+        report,
+        "active at the activation height",
         upgrade["status"] == "active" && tip_branch == branch,
-        format!("tip {height}, status {}, chaintip {tip_branch}", upgrade["status"]));
+        format!(
+            "tip {height}, status {}, chaintip {tip_branch}",
+            upgrade["status"]
+        ),
+    );
 
     let block = node.rpc("getblock", json!([height.to_string(), 1]));
-    check(report, "activation block is readable", block.is_ok(),
-        match &block { Ok(b) => format!("hash {}", b["hash"].as_str().unwrap_or("?")), Err(e) => format!("{e:#}") });
+    check(
+        report,
+        "activation block is readable",
+        block.is_ok(),
+        match &block {
+            Ok(b) => format!("hash {}", b["hash"].as_str().unwrap_or("?")),
+            Err(e) => format!("{e:#}"),
+        },
+    );
 
     node.mine(plan.upgrade.blocks_after)?;
     let want = height + plan.upgrade.blocks_after;
     let got = node.height()?;
-    check(report, "chain grows after activation", got == want, format!("tip {got}, expected {want}"));
+    check(
+        report,
+        "chain grows after activation",
+        got == want,
+        format!("tip {got}, expected {want}"),
+    );
     Ok(())
 }
 
@@ -137,10 +169,20 @@ fn find_upgrade(info: &Value, name: &str) -> Option<(String, Value)> {
 }
 
 fn check(report: &mut Report, name: &str, passed: bool, detail: String) {
-    report.checks.push(Check { name: name.into(), passed, detail });
+    report.checks.push(Check {
+        name: name.into(),
+        passed,
+        detail,
+    });
 }
 
-fn run_project(project: &Project, plan: &Plan, node: &Node, report: &Report, out: &Path) -> ProjectResult {
+fn run_project(
+    project: &Project,
+    plan: &Plan,
+    node: &Node,
+    report: &Report,
+    out: &Path,
+) -> ProjectResult {
     let log_path = out.join(format!("project-{}.log", project.name));
     let started = Instant::now();
     let mut result = ProjectResult {
@@ -160,9 +202,18 @@ fn run_project(project: &Project, plan: &Plan, node: &Node, report: &Report, out
             .current_dir(&plan.base_dir)
             .env("ZREHEARSE_RPC_URL", &node.rpc_url)
             .env("ZREHEARSE_UPGRADE", &plan.upgrade.name)
-            .env("ZREHEARSE_ACTIVATION_HEIGHT", plan.upgrade.height.to_string())
-            .env("ZREHEARSE_BRANCH_ID", report.branch_id.as_deref().unwrap_or_default())
-            .env("ZREHEARSE_TIP", (plan.upgrade.height + plan.upgrade.blocks_after).to_string())
+            .env(
+                "ZREHEARSE_ACTIVATION_HEIGHT",
+                plan.upgrade.height.to_string(),
+            )
+            .env(
+                "ZREHEARSE_BRANCH_ID",
+                report.branch_id.as_deref().unwrap_or_default(),
+            )
+            .env(
+                "ZREHEARSE_TIP",
+                (plan.upgrade.height + plan.upgrade.blocks_after).to_string(),
+            )
             .stdin(Stdio::null())
             .stdout(log)
             .stderr(err)

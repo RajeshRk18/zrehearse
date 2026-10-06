@@ -27,14 +27,24 @@ fn rehearse(plan: &str, out: &str) -> Run {
     let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
     let stderr = String::from_utf8_lossy(&output.stderr);
 
-    let ps = Command::new("docker").args(["ps", "-aq", "--filter", &name]).output().expect("docker ps");
+    let ps = Command::new("docker")
+        .args(["ps", "-aq", "--filter", &name])
+        .output()
+        .expect("docker ps");
     assert!(ps.status.success(), "docker ps failed");
-    assert!(ps.stdout.is_empty(), "container left behind\n{stdout}{stderr}");
+    assert!(
+        ps.stdout.is_empty(),
+        "container left behind\n{stdout}{stderr}"
+    );
 
     let report = std::fs::read_to_string(format!("{out}/report.json"))
         .unwrap_or_else(|e| panic!("reading report.json: {e}\n{stdout}{stderr}"));
     let report = serde_json::from_str(&report).expect("report.json is JSON");
-    Run { output, stdout, report }
+    Run {
+        output,
+        stdout,
+        report,
+    }
 }
 
 #[test]

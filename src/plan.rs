@@ -110,8 +110,16 @@ impl Plan {
             if !seen.insert(p.name.as_str()) {
                 bail!("project name {:?} is used twice", p.name);
             }
-            if p.name.is_empty() || !p.name.chars().all(|c| c.is_ascii_alphanumeric() || "-_".contains(c)) {
-                bail!("project name {:?} may only use letters, digits, '-' and '_'", p.name);
+            if p.name.is_empty()
+                || !p
+                    .name
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || "-_".contains(c))
+            {
+                bail!(
+                    "project name {:?} may only use letters, digits, '-' and '_'",
+                    p.name
+                );
             }
         }
         Ok(())
@@ -128,16 +136,22 @@ impl Plan {
         for (name, height) in &UPGRADES[..idx] {
             out.push_str(&format!("\"{name}\" = {height}\n"));
         }
-        out.push_str(&format!("\"{}\" = {}\n", self.upgrade.name, self.upgrade.height));
+        out.push_str(&format!(
+            "\"{}\" = {}\n",
+            self.upgrade.name, self.upgrade.height
+        ));
         out
     }
 }
 
 fn upgrade_index(name: &str) -> Result<usize> {
-    UPGRADES.iter().position(|(n, _)| *n == name).with_context(|| {
-        let known: Vec<_> = UPGRADES.iter().map(|(n, _)| *n).collect();
-        format!("unknown upgrade {name:?}; known: {}", known.join(", "))
-    })
+    UPGRADES
+        .iter()
+        .position(|(n, _)| *n == name)
+        .with_context(|| {
+            let known: Vec<_> = UPGRADES.iter().map(|(n, _)| *n).collect();
+            format!("unknown upgrade {name:?}; known: {}", known.join(", "))
+        })
 }
 
 #[cfg(test)]
@@ -155,19 +169,29 @@ mod tests {
 
     #[test]
     fn zebrad_toml_stops_at_the_target_upgrade() {
-        let p = plan(&format!("name = \"t\"\n{NODE}[upgrade]\nname = \"NU6.1\"\nheight = 20\n")).unwrap();
+        let p = plan(&format!(
+            "name = \"t\"\n{NODE}[upgrade]\nname = \"NU6.1\"\nheight = 20\n"
+        ))
+        .unwrap();
         let cfg = p.zebrad_toml();
         assert!(cfg.contains("\"NU6\" = 2\n"));
         assert!(cfg.contains("\"NU6.1\" = 20\n"));
-        assert!(!cfg.contains("NU6.2"), "later upgrades must not activate:\n{cfg}");
+        assert!(
+            !cfg.contains("NU6.2"),
+            "later upgrades must not activate:\n{cfg}"
+        );
         assert!(cfg.contains("network = \"Regtest\""));
     }
 
     #[test]
     fn rejects_unknown_upgrade_and_low_height() {
-        let unknown = plan(&format!("name = \"t\"\n{NODE}[upgrade]\nname = \"NU9\"\nheight = 20\n"));
+        let unknown = plan(&format!(
+            "name = \"t\"\n{NODE}[upgrade]\nname = \"NU9\"\nheight = 20\n"
+        ));
         assert!(unknown.unwrap_err().to_string().contains("unknown upgrade"));
-        let low = plan(&format!("name = \"t\"\n{NODE}[upgrade]\nname = \"NU6.3\"\nheight = 2\n"));
+        let low = plan(&format!(
+            "name = \"t\"\n{NODE}[upgrade]\nname = \"NU6.3\"\nheight = 2\n"
+        ));
         assert!(low.unwrap_err().to_string().contains("must be above 2"));
     }
 
@@ -186,7 +210,10 @@ mod tests {
 
     #[test]
     fn defaults_fill_in() {
-        let p = plan(&format!("name = \"t\"\n{NODE}[upgrade]\nname = \"NU6.3\"\nheight = 5\n")).unwrap();
+        let p = plan(&format!(
+            "name = \"t\"\n{NODE}[upgrade]\nname = \"NU6.3\"\nheight = 5\n"
+        ))
+        .unwrap();
         assert_eq!(p.upgrade.blocks_after, 10);
         assert_eq!(p.node.miner_address, DEFAULT_MINER_ADDRESS);
         assert!(p.projects.is_empty());

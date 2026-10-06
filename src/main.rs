@@ -50,7 +50,12 @@ fn real_main() -> Result<bool> {
     while let Some(arg) = rest.next() {
         match arg.as_str() {
             "--keep" => keep = true,
-            "--out" => out = Some(PathBuf::from(rest.next().ok_or_else(|| anyhow::anyhow!("--out needs a directory"))?)),
+            "--out" => {
+                out = Some(PathBuf::from(
+                    rest.next()
+                        .ok_or_else(|| anyhow::anyhow!("--out needs a directory"))?,
+                ))
+            }
             flag if flag.starts_with('-') => bail!("unknown flag {flag}\n{USAGE}"),
             path if plan_path.is_none() => plan_path = Some(PathBuf::from(path)),
             extra => bail!("unexpected argument {extra}\n{USAGE}"),
@@ -59,11 +64,18 @@ fn real_main() -> Result<bool> {
     let plan_path = plan_path.ok_or_else(|| anyhow::anyhow!("{USAGE}"))?;
     let plan = plan::Plan::load(&plan_path)?;
     let out = out.unwrap_or_else(|| {
-        let stem = plan_path.file_stem().unwrap_or_default().to_string_lossy().into_owned();
+        let stem = plan_path
+            .file_stem()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .into_owned();
         PathBuf::from("out").join(stem)
     });
 
-    println!("rehearsing {} at height {} on {}", plan.upgrade.name, plan.upgrade.height, plan.node.image);
+    println!(
+        "rehearsing {} at height {} on {}",
+        plan.upgrade.name, plan.upgrade.height, plan.node.image
+    );
     let report = rehearse::run(&plan, &out, keep)?;
 
     for c in &report.checks {
@@ -75,7 +87,12 @@ fn real_main() -> Result<bool> {
         } else if p.timed_out {
             format!("timed out after {}s, log {}", p.seconds, p.log)
         } else {
-            format!("exit {}, {}s, log {}", p.exit_code.map_or("?".into(), |c| c.to_string()), p.seconds, p.log)
+            format!(
+                "exit {}, {}s, log {}",
+                p.exit_code.map_or("?".into(), |c| c.to_string()),
+                p.seconds,
+                p.log
+            )
         };
         println!("{}  project {}  ({how})", mark(p.passed), p.name);
     }

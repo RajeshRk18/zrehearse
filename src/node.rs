@@ -30,14 +30,22 @@ impl Node {
         let container = format!("zrehearse-{}-{}", std::process::id(), unix_millis());
         let mount = format!("{}:/home/zebra/.config/zebrad.toml:ro", config.display());
         docker(&[
-            "run", "-d",
-            "--name", &container,
-            "--label", LABEL,
-            "-p", &format!("127.0.0.1::{RPC_PORT}"),
-            "-v", &mount,
-            "-e", &format!("ZEBRA_RPC__LISTEN_ADDR=0.0.0.0:{RPC_PORT}"),
-            "-e", "ZEBRA_RPC__ENABLE_COOKIE_AUTH=false",
-            "-e", &format!("ZEBRA_MINING__MINER_ADDRESS={miner_address}"),
+            "run",
+            "-d",
+            "--name",
+            &container,
+            "--label",
+            LABEL,
+            "-p",
+            &format!("127.0.0.1::{RPC_PORT}"),
+            "-v",
+            &mount,
+            "-e",
+            &format!("ZEBRA_RPC__LISTEN_ADDR=0.0.0.0:{RPC_PORT}"),
+            "-e",
+            "ZEBRA_RPC__ENABLE_COOKIE_AUTH=false",
+            "-e",
+            &format!("ZEBRA_MINING__MINER_ADDRESS={miner_address}"),
             image,
         ])
         .with_context(|| format!("starting {image}"))?;
@@ -83,16 +91,24 @@ impl Node {
             .post(&self.rpc_url)
             .send_json(&body)
             .with_context(|| format!("calling {method}"))?;
-        let reply: Value = resp.body_mut().read_json().with_context(|| format!("reading {method} reply"))?;
+        let reply: Value = resp
+            .body_mut()
+            .read_json()
+            .with_context(|| format!("reading {method} reply"))?;
         if let Some(err) = reply.get("error").filter(|e| !e.is_null()) {
             bail!("{method} failed: {err}");
         }
-        reply.get("result").cloned().with_context(|| format!("{method} reply has no result"))
+        reply
+            .get("result")
+            .cloned()
+            .with_context(|| format!("{method} reply has no result"))
     }
 
     pub fn height(&self) -> Result<u32> {
         let h = self.rpc("getblockcount", json!([]))?;
-        h.as_u64().and_then(|h| u32::try_from(h).ok()).context("getblockcount is not a height")
+        h.as_u64()
+            .and_then(|h| u32::try_from(h).ok())
+            .context("getblockcount is not a height")
     }
 
     /// Mines `n` blocks with the regtest-only `generate` RPC.
@@ -120,17 +136,29 @@ impl Node {
 impl Drop for Node {
     fn drop(&mut self) {
         if self.keep {
-            eprintln!("keeping container {} (RPC at {})", self.container, self.rpc_url);
+            eprintln!(
+                "keeping container {} (RPC at {})",
+                self.container, self.rpc_url
+            );
             return;
         }
-        let _ = Command::new("docker").args(["rm", "-f", &self.container]).output();
+        let _ = Command::new("docker")
+            .args(["rm", "-f", &self.container])
+            .output();
     }
 }
 
 fn docker(args: &[&str]) -> Result<String> {
-    let out = Command::new("docker").args(args).output().context("running docker")?;
+    let out = Command::new("docker")
+        .args(args)
+        .output()
+        .context("running docker")?;
     if !out.status.success() {
-        bail!("docker {} failed: {}", args[0], String::from_utf8_lossy(&out.stderr).trim());
+        bail!(
+            "docker {} failed: {}",
+            args[0],
+            String::from_utf8_lossy(&out.stderr).trim()
+        );
     }
     Ok(String::from_utf8_lossy(&out.stdout).into_owned())
 }
