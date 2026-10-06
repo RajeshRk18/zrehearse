@@ -66,7 +66,13 @@ impl Node {
                 .into(),
             keep,
         };
-        let mapped = docker(&["port", &node.container, &RPC_PORT.to_string()])?;
+        let mapped = match docker(&["port", &node.container, &RPC_PORT.to_string()]) {
+            Ok(mapped) => mapped,
+            // zebrad can exit before Docker reports the port. The empty
+            // `rpc_url` then makes `wait_ready` report the exit.
+            Err(_) if node.status()?.1.is_some() => return Ok(node),
+            Err(e) => return Err(e),
+        };
         let host_port = mapped
             .lines()
             .find(|l| l.starts_with("127.0.0.1:"))
@@ -75,7 +81,7 @@ impl Node {
         Ok(node)
     }
 
-    /// Waits until the RPC server answers.
+    /// Waits until the RPC server answers. Stops early if zebrad exits.
     pub fn wait_ready(&self, timeout: Duration) -> Result<()> {
         let deadline = Instant::now() + timeout;
         loop {
@@ -84,9 +90,38 @@ impl Node {
                 Err(e) if Instant::now() >= deadline => {
                     bail!("zebrad RPC not ready after {}s: {e:#}", timeout.as_secs())
                 }
-                Err(_) => std::thread::sleep(Duration::from_millis(500)),
+                Err(_) => {
+                    if let (state, Some(code)) = self.status()? {
+                        bail!("zebrad {state} with code {code} before its RPC answered");
+                    }
+                    std::thread::sleep(Duration::from_millis(500));
+                }
             }
         }
+    }
+
+    /// Docker's state for the container, such as `running` or `exited`, and
+    /// the exit code once it is not running.
+    pub fn status(&self) -> Result<(String, Option<i64>)> {
+        let out = docker(&[
+            "inspect",
+            "-f",
+            "{{.State.Status}} {{.State.ExitCode}}",
+            &self.container,
+        ])?;
+        let mut parts = out.split_whitespace();
+        let state = parts
+            .next()
+            .with_context(|| format!("empty `docker inspect` output for {}", self.container))?
+            .to_string();
+        if state == "running" {
+            return Ok((state, None));
+        }
+        let code = parts
+            .next()
+            .and_then(|c| c.parse().ok())
+            .with_context(|| format!("no exit code in `docker inspect` output {out:?}"))?;
+        Ok((state, Some(code)))
     }
 
     pub fn rpc(&self, method: &str, params: Value) -> Result<Value> {
@@ -191,4 +226,52 @@ fn unix_millis() -> u128 {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_millis())
         .unwrap_or(0)
+}
+
+/// The lines of a zebrad log that explain a failure. These are the `error:`
+/// lines zebrad prints when it cannot start, tracing `ERROR` lines and panics.
+pub fn error_lines(log: &str) -> Vec<String> {
+    log.lines()
+        .filter_map(|line| {
+            let line = line.trim();
+            if let Some(msg) = line.strip_prefix("error: ") {
+                return Some(msg.to_string());
+            }
+            if line.contains("panicked at") {
+                return Some(line.to_string());
+            }
+            // Tracing lines look like `<timestamp>Z ERROR <target>: <message>`.
+            let mut words = line.split_whitespace();
+            let stamped = words.next().is_some_and(|w| w.ends_with('Z'));
+            if stamped && words.next() == Some("ERROR") {
+                return Some(words.collect::<Vec<_>>().join(" "));
+            }
+            None
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn error_lines_keeps_errors_and_panics_only() {
+        let log = "\
+2026-10-06T04:02:42.926153Z  INFO zebrad::components::tracing: started
+2026-10-06T04:02:43.000000Z  WARN zebra_network: no peers
+2026-10-06T04:02:44.000000Z ERROR zebra_state: block rejected height=20
+thread 'main' panicked at zebra-chain/src/parameters/network.rs:187:18:
+error: zebrad fatal error: Configuration error: unknown field `Nu7`
+                     continued text that is not an error line
+";
+        assert_eq!(
+            error_lines(log),
+            [
+                "zebra_state: block rejected height=20",
+                "thread 'main' panicked at zebra-chain/src/parameters/network.rs:187:18:",
+                "zebrad fatal error: Configuration error: unknown field `Nu7`",
+            ]
+        );
+    }
 }

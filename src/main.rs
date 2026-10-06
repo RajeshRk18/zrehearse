@@ -98,6 +98,17 @@ fn real_main() -> Result<bool> {
         };
         println!("{}  project {}  ({how})", mark(p.passed), p.name);
     }
+    if let Some(error) = report.node.as_ref().and_then(|n| n.errors.last()) {
+        // The last error line is the most specific, for example the cause
+        // after zebrad's generic config message.
+        println!(
+            "zebrad error  {error}  (log {})",
+            out.join("zebrad.log").display()
+        );
+    }
+    if let Some(error) = &report.setup_error {
+        bail!("{error}\nreport: {}", out.join("report.json").display());
+    }
     println!(
         "REHEARSAL {}  report: {}",
         if report.passed { "PASSED" } else { "FAILED" },

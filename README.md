@@ -100,12 +100,14 @@ Exit code 0 means pass. Anything else, or a timeout, means fail.
 
 Everything goes to `out/<plan file name>/`, for example `out/nu6_3/` for `examples/nu6_3.toml`, or to the directory you pass with `--out`.
 
-- `report.json` has every check and project result.
+- `report.json` has every check and project result. Its `node` object has the container state, the zebrad exit code and, for a failed run, the error lines from the zebrad log.
 - `zebrad.log` holds the last 300 lines of the node's log.
 - `project-<name>.log` holds each project's stdout and stderr.
 - `zebrad.toml` is the config the node ran with.
 
-The process exits with 0 when the rehearsal passed, 1 when a check or project failed, and 2 when the rehearsal could not run at all (for example when Docker is missing or the plan is invalid).
+When a run fails, zrehearse also prints the last zebrad error line.
+
+The process exits with 0 when the rehearsal passed and 1 when a check or project failed. It exits with 2 when the rehearsal could not run. Examples are a missing Docker, an invalid plan, a zebrad that exits before its RPC answers, and an image that does not know `name` or `previous`. Then `setup_error` in `report.json` gives the cause.
 
 ## Architecture
 
@@ -128,9 +130,10 @@ A new upgrade needs no change to zrehearse. Point a plan at a Zebra image that k
 
 ## Development
 
-The tests in `tests/rehearse.rs` run real rehearsals, so they need Docker and the Zebra image. One rehearses `examples/nu6_3.toml` and must pass. The other rehearses `examples/failing_project.toml` and must fail.
+The tests in `tests/rehearse.rs` run real rehearsals, so they need Docker and the Zebra image. They rehearse both examples, a misspelled upgrade, an upgrade the image does not know and a container that fails to start.
 
 ```sh
+cargo fmt --check
 cargo clippy --all-targets -- -D warnings
 cargo test                                # unit tests
 cargo test --test rehearse -- --ignored   # real rehearsals

@@ -108,3 +108,58 @@ fn failed_container_start_leaves_no_container() {
     assert_eq!(output.status.code(), Some(2), "{text}");
     assert!(text.contains("starting zrehearse-test-badmount"), "{text}");
 }
+
+/// Rehearses a plan with this `[upgrade]` table on Zebra 6.2.3, written to a temp dir.
+fn rehearse_upgrade(dir: &str, upgrade: &str) -> (Output, String, Value) {
+    let dir = format!("{}/{dir}", env!("CARGO_TARGET_TMPDIR"));
+    std::fs::create_dir_all(&dir).unwrap();
+    let plan = format!("{dir}/plan.toml");
+    std::fs::write(
+        &plan,
+        format!("name = \"t\"\n[node]\nimage = \"zfnd/zebra:6.2.3\"\n[upgrade]\n{upgrade}"),
+    )
+    .unwrap();
+    let out = format!("{dir}/out");
+    let (output, text) = run_zrehearse(&plan, &out);
+    let report = std::fs::read_to_string(format!("{out}/report.json"))
+        .unwrap_or_else(|e| panic!("reading report.json: {e}\n{text}"));
+    (output, text, serde_json::from_str(&report).unwrap())
+}
+
+#[test]
+#[ignore = "needs Docker and zfnd/zebra:6.2.3"]
+fn misspelled_upgrade_reports_the_zebrad_error() {
+    let (output, text, report) = rehearse_upgrade(
+        "misspelled",
+        "name = \"Nu7\"\nprevious = \"NU6.3\"\nheight = 20\n",
+    );
+    assert_eq!(output.status.code(), Some(2), "{text}");
+    let setup = report["setup_error"].as_str().unwrap();
+    assert!(setup.contains("exited with code 1"), "{setup}");
+    assert_eq!(report["node"]["state"], "exited");
+    assert_eq!(report["node"]["exit_code"], 1);
+    let errors = report["node"]["errors"].as_array().unwrap();
+    assert!(
+        errors
+            .iter()
+            .any(|e| e.as_str().unwrap().contains("unknown field `Nu7`")),
+        "{errors:?}"
+    );
+    assert!(text.contains("zebrad error"), "{text}");
+}
+
+#[test]
+#[ignore = "needs Docker and zfnd/zebra:6.2.3"]
+fn upgrade_the_image_does_not_know_is_a_setup_error() {
+    let (output, text, report) = rehearse_upgrade(
+        "unsupported",
+        "name = \"NU7\"\nprevious = \"NU6.3\"\nheight = 20\n",
+    );
+    assert_eq!(output.status.code(), Some(2), "{text}");
+    let setup = report["setup_error"].as_str().unwrap();
+    assert!(
+        setup.starts_with("image zfnd/zebra:6.2.3 does not support NU7"),
+        "{setup}"
+    );
+    assert_eq!(report["passed"], false);
+}

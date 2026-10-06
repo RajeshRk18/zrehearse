@@ -1,7 +1,7 @@
 //! One rehearsal. Start the node, mine across the activation height, check the
 //! upgrade really activated, then run each project against the node.
 
-use crate::node::Node;
+use crate::node::{self, Node};
 use crate::plan::{Plan, Project};
 use anyhow::{Context, Result};
 use serde::Serialize;
@@ -25,7 +25,34 @@ pub struct Report {
     pub checks: Vec<Check>,
     pub projects: Vec<ProjectResult>,
     pub passed: bool,
+    /// Why the rehearsal could not run. Its result then says nothing about
+    /// the upgrade.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub setup_error: Option<String>,
+    pub node: Option<NodeReport>,
 }
+
+#[derive(Serialize)]
+pub struct NodeReport {
+    /// Docker's state for the container at the end of the run.
+    pub state: String,
+    pub exit_code: Option<i64>,
+    /// Error lines from the zebrad log, collected when the run failed.
+    pub errors: Vec<String>,
+    pub log: String,
+}
+
+/// The node could not be prepared for the rehearsal.
+#[derive(Debug)]
+struct SetupError(String);
+
+impl std::fmt::Display for SetupError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for SetupError {}
 
 #[derive(Serialize)]
 pub struct Check {
@@ -65,16 +92,22 @@ pub fn run(plan: &Plan, out: &Path, keep: bool) -> Result<Report> {
         checks: Vec::new(),
         projects: Vec::new(),
         passed: false,
+        setup_error: None,
+        node: None,
     };
 
     let node = Node::start(&plan.node.image, &config, &plan.node.miner_address, keep)?;
     let activated = activation_checks(plan, &node, &mut report);
     if let Err(e) = &activated {
-        report.checks.push(Check {
-            name: "rehearsal setup".into(),
-            passed: false,
-            detail: format!("{e:#}"),
-        });
+        if e.downcast_ref::<SetupError>().is_some() {
+            report.setup_error = Some(format!("{e:#}"));
+        } else {
+            report.checks.push(Check {
+                name: "node answered every request".into(),
+                passed: false,
+                detail: format!("{e:#}"),
+            });
+        }
     }
     let activated = activated.is_ok() && report.checks.iter().all(|c| c.passed);
 
@@ -98,8 +131,21 @@ pub fn run(plan: &Plan, out: &Path, keep: bool) -> Result<Report> {
         report.projects.push(result);
     }
 
-    write(&out.join("zebrad.log"), node.logs())?;
+    let log = node.logs();
+    let log_path = out.join("zebrad.log");
+    write(&log_path, &log)?;
     report.passed = activated && report.projects.iter().all(|p| p.passed);
+    let (state, exit_code) = node.status()?;
+    report.node = Some(NodeReport {
+        state,
+        exit_code,
+        errors: if report.passed {
+            Vec::new()
+        } else {
+            node::error_lines(&log)
+        },
+        log: log_path.display().to_string(),
+    });
     write(
         &out.join("report.json"),
         serde_json::to_string_pretty(&report)? + "\n",
@@ -111,19 +157,30 @@ pub fn run(plan: &Plan, out: &Path, keep: bool) -> Result<Report> {
 /// zebrad reports at each step. An `Err` means the node itself misbehaved.
 fn activation_checks(plan: &Plan, node: &Node, report: &mut Report) -> Result<()> {
     let target = &plan.upgrade.name;
+    let previous = &plan.upgrade.previous;
     let height = plan.upgrade.height;
-    node.wait_ready(Duration::from_secs(plan.node.ready_timeout_secs))?;
+    node.wait_ready(Duration::from_secs(plan.node.ready_timeout_secs))
+        .map_err(|e| SetupError(format!("{e:#}")))?;
+
+    // An image that does not know an upgrade leaves it out of this list.
+    let info = node.rpc("getblockchaininfo", json!([]))?;
+    for name in [previous, target] {
+        if find_upgrade(&info, name).is_none() {
+            return Err(SetupError(format!(
+                "image {} does not support {name}, it is not in getblockchaininfo.upgrades",
+                plan.node.image
+            ))
+            .into());
+        }
+    }
 
     let tip = node.height()?;
     node.mine((height - 1).saturating_sub(tip))?;
     let info = node.rpc("getblockchaininfo", json!([]))?;
-    let (branch, upgrade) = find_upgrade(&info, target)
-        .with_context(|| format!("zebrad does not list {target} in getblockchaininfo.upgrades"))?;
+    let (branch, upgrade) = find_upgrade(&info, target).context("upgrade vanished")?;
     report.branch_id = Some(branch.clone());
-    let previous = &plan.upgrade.previous;
-    let (previous_branch, _) = find_upgrade(&info, previous).with_context(|| {
-        format!("zebrad does not list {previous} in getblockchaininfo.upgrades")
-    })?;
+    let (previous_branch, _) =
+        find_upgrade(&info, previous).context("previous upgrade vanished")?;
     report.previous_branch_id = Some(previous_branch.clone());
     let tip_branch = info["consensus"]["chaintip"].as_str().unwrap_or_default();
     check(
