@@ -9,8 +9,9 @@ It also funds a transparent key, so that projects can sign and send
 transactions across the boundary, and it can put lightwalletd or Zaino in
 front of the node and check what they serve over gRPC.
 
-Out of scope for now are shadow forks and Windows. See the README section
-"Limits".
+Out of scope are shadow forks, a transaction generator and Windows. If shadow
+forks or a generator are ever added, they must be optional. See the README
+section "Limits".
 
 ## Commands
 
