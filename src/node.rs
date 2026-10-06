@@ -29,7 +29,7 @@ impl Node {
             .with_context(|| format!("resolving {}", config.display()))?;
         let container = format!("zrehearse-{}-{}", std::process::id(), unix_millis());
         let mount = format!("{}:/home/zebra/.config/zebrad.toml:ro", config.display());
-        docker(&[
+        let started = docker(&[
             "run",
             "-d",
             "--name",
@@ -47,8 +47,13 @@ impl Node {
             "-e",
             &format!("ZEBRA_MINING__MINER_ADDRESS={miner_address}"),
             image,
-        ])
-        .with_context(|| format!("starting {image}"))?;
+        ]);
+        if let Err(e) = started {
+            // `docker run` can fail after it created the container, for
+            // example when the port bind fails.
+            remove(&container);
+            return Err(e.context(format!("starting {image}")));
+        }
 
         // From here on, Drop removes the container even if setup fails.
         let mut node = Node {
@@ -142,9 +147,27 @@ impl Drop for Node {
             );
             return;
         }
-        let _ = Command::new("docker")
-            .args(["rm", "-f", &self.container])
-            .output();
+        remove(&self.container);
+    }
+}
+
+/// Removes the container and reports a failure on stderr. A container that
+/// does not exist is not a failure.
+fn remove(container: &str) {
+    match Command::new("docker")
+        .args(["rm", "-f", container])
+        .output()
+    {
+        Ok(out) => {
+            let err = String::from_utf8_lossy(&out.stderr);
+            if !out.status.success() && !err.contains("No such container") {
+                eprintln!(
+                    "warning: could not remove container {container}: {}",
+                    err.trim()
+                );
+            }
+        }
+        Err(e) => eprintln!("warning: could not run docker rm for {container}: {e}"),
     }
 }
 
