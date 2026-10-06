@@ -38,7 +38,7 @@ REHEARSAL PASSED  report: out/nu6_3/report.json
 
 ## Usage
 
-Install the CLI with cargo. You need Docker on the machine that runs it.
+Install the CLI with cargo, or download a binary for Linux x64, Linux arm64 or macOS arm64 from the [releases](https://github.com/RajeshRk18/zrehearse/releases). You need Docker on the machine that runs it.
 
 ```sh
 cargo install --locked --git https://github.com/RajeshRk18/zrehearse
@@ -139,7 +139,7 @@ jobs:
           plan: zrehearse/nu7.toml
 ```
 
-The action needs a Linux runner, because GitHub's macOS runners have no Docker. `out` sets the output directory (default `zrehearse-out`), and the `report` output gives the path to `report.json`. With a release tag such as `@v0`, the action downloads the release binary. With any other ref, it builds zrehearse from that ref. Until the first release, use `@master`.
+The action needs a Linux runner, because GitHub's macOS runners have no Docker. `out` sets the output directory (default `zrehearse-out`), and the `report` output gives the path to `report.json`. With a release tag such as `@v0`, the action downloads the release binary. With any other ref, it builds zrehearse from that ref.
 
 ## Output
 
