@@ -207,10 +207,14 @@ The process exits with 0 when the rehearsal passed and 1 when a check or project
 
 A new upgrade needs no change to zrehearse. Point a plan at a Zebra image that knows the upgrade, and set `name` and `previous`.
 
-## Not built yet
+## Limits
 
+- The chain is a private regtest chain. zrehearse never connects to testnet or mainnet, so it does not replace a test on the real network with real peers and timing.
 - Shadow forks. The chain starts empty, not from a copy of mainnet state. Zebra can carry Mainnet history as a configured Testnet with a moved activation height, but that needs a state of about 255 GiB.
 - A transaction generator that sends every transaction type across the activation height.
+- No wallet backend container such as Zallet.
+- zrehearse funds one transparent key. A suite that needs shielded funds must shield them first.
+- Your suite must read the node and light server endpoints from the `ZREHEARSE_*` environment variables. A suite with fixed ports, or one that only knows testnet, needs a small change.
 - Windows. Projects run under `sh`.
 
 ## Development

@@ -10,7 +10,7 @@ transactions across the boundary, and it can put lightwalletd or Zaino in
 front of the node and check what they serve over gRPC.
 
 Out of scope for now are shadow forks and Windows. See the README section
-"Not built yet".
+"Limits".
 
 ## Commands
 
