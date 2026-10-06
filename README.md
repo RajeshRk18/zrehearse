@@ -30,6 +30,8 @@ PASS  project rpc-smoke  (exit 0, 0.2s, log out/nu6_3/project-rpc-smoke.log)
 REHEARSAL PASSED  report: out/nu6_3/report.json
 ```
 
+`examples/nu7.toml` rehearses NU7 on `zfnd/zebra:7.0.0-rc.0`, the first Zebra image that knows NU7.
+
 `examples/failing_project.toml` is the negative control. The node activates the upgrade fine, but its project exits with code 3, so the whole run fails.
 
 ## The plan file

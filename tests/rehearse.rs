@@ -1,5 +1,5 @@
-//! Real rehearsals. They need Docker and the zfnd/zebra:6.2.3 image, so they
-//! run only with `cargo test -- --ignored`.
+//! Real rehearsals. They need Docker and the zfnd/zebra:6.2.3 and
+//! zfnd/zebra:7.0.0-rc.0 images, so they run only with `cargo test -- --ignored`.
 
 use serde_json::Value;
 use std::process::{Command, Output, Stdio};
@@ -64,6 +64,16 @@ fn nu6_3_rehearsal_passes() {
             .any(|c| c["name"] == "previous upgrade in force before activation")
     );
     assert_eq!(run.report["projects"][0]["name"], "rpc-smoke");
+    assert_eq!(run.report["projects"][0]["passed"], true);
+}
+
+#[test]
+#[ignore = "needs Docker and zfnd/zebra:7.0.0-rc.0"]
+fn nu7_rehearsal_passes() {
+    let run = rehearse("examples/nu7.toml", "out/e2e-nu7");
+    assert!(run.output.status.success(), "{}", run.stdout);
+    assert_eq!(run.report["branch_id"], "77190ad9");
+    assert_eq!(run.report["previous_branch_id"], "37a5165b");
     assert_eq!(run.report["projects"][0]["passed"], true);
 }
 

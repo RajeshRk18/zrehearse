@@ -23,7 +23,7 @@ jobs:
       - name: Unit tests
         run: cargo test
       - name: Pull Zebra
-        run: docker pull zfnd/zebra:6.2.3
+        run: docker pull zfnd/zebra:6.2.3 && docker pull zfnd/zebra:7.0.0-rc.0
       - name: Rehearsals
         run: cargo test --test rehearse -- --ignored
       - name: Upload reports
