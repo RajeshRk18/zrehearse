@@ -84,6 +84,8 @@ fn real_main() -> Result<bool> {
     for p in &report.projects {
         let how = if p.skipped {
             "skipped, the upgrade did not activate cleanly".to_string()
+        } else if let Some(error) = &p.error {
+            error.clone()
         } else if p.timed_out {
             format!("timed out after {}s, log {}", p.seconds, p.log)
         } else {

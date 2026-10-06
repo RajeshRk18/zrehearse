@@ -41,12 +41,15 @@ pub struct ProjectResult {
     pub skipped: bool,
     pub seconds: f64,
     pub log: String,
+    /// Why zrehearse could not start, watch or stop the project.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
 }
 
 pub fn run(plan: &Plan, out: &Path, keep: bool) -> Result<Report> {
     std::fs::create_dir_all(out).with_context(|| format!("creating {}", out.display()))?;
     let config = out.join("zebrad.toml");
-    std::fs::write(&config, plan.zebrad_toml())?;
+    write(&config, plan.zebrad_toml())?;
 
     let mut report = Report {
         plan: plan.name.clone(),
@@ -84,15 +87,16 @@ pub fn run(plan: &Plan, out: &Path, keep: bool) -> Result<Report> {
                 skipped: true,
                 seconds: 0.0,
                 log: String::new(),
+                error: None,
             }
         };
         report.projects.push(result);
     }
 
-    std::fs::write(out.join("zebrad.log"), node.logs())?;
+    write(&out.join("zebrad.log"), node.logs())?;
     report.passed = env_ok && report.projects.iter().all(|p| p.passed);
-    std::fs::write(
-        out.join("report.json"),
+    write(
+        &out.join("report.json"),
         serde_json::to_string_pretty(&report)? + "\n",
     )?;
     Ok(report)
@@ -193,6 +197,7 @@ fn run_project(
         skipped: false,
         seconds: 0.0,
         log: log_path.display().to_string(),
+        error: None,
     };
     let spawned = File::create(&log_path).and_then(|log| {
         let err = log.try_clone()?;
@@ -222,7 +227,7 @@ fn run_project(
     let mut child = match spawned {
         Ok(child) => child,
         Err(e) => {
-            let _ = std::fs::write(&log_path, format!("could not start project: {e}\n"));
+            result.error = Some(format!("could not start project: {e}"));
             return result;
         }
     };
@@ -238,18 +243,23 @@ fn run_project(
             Ok(None) if started.elapsed() >= timeout => {
                 // ponytail: kills only the `sh` process. A project that forks
                 // background jobs has to clean them up itself.
-                let _ = child.kill();
-                let _ = child.wait();
+                if let Err(e) = child.kill().and_then(|()| child.wait().map(drop)) {
+                    result.error = Some(format!("could not stop project after timeout: {e}"));
+                }
                 result.timed_out = true;
                 break;
             }
             Ok(None) => std::thread::sleep(Duration::from_millis(200)),
             Err(e) => {
-                let _ = std::fs::write(&log_path, format!("lost track of project: {e}\n"));
+                result.error = Some(format!("lost track of project: {e}"));
                 break;
             }
         }
     }
     result.seconds = (started.elapsed().as_secs_f64() * 10.0).round() / 10.0;
     result
+}
+
+fn write(path: &Path, contents: impl AsRef<[u8]>) -> Result<()> {
+    std::fs::write(path, contents).with_context(|| format!("writing {}", path.display()))
 }
