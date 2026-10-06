@@ -1,0 +1,18 @@
+# Rehearse NU7 on Zebra 7.0.0-rc.0 with lightwalletd in front of the node.
+name = "nu7 with lightwalletd"
+
+[node]
+image = "zfnd/zebra:7.0.0-rc.0"
+
+[upgrade]
+name = "NU7"
+previous = "NU6.3"
+
+[light_server]
+kind = "lightwalletd"
+image = "electriccoinco/lightwalletd:v0.5.4"
+
+# A stand-in for a wallet test. It needs the light server URL.
+[[project]]
+name = "lightwalletd-url"
+run = 'test -n "$ZREHEARSE_LIGHTWALLETD_URL"'

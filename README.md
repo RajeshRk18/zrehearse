@@ -34,6 +34,8 @@ REHEARSAL PASSED  report: out/nu6_3/report.json
 
 `examples/nu7.toml` rehearses NU7 on `zfnd/zebra:7.0.0-rc.0`, the first Zebra image that knows NU7.
 
+`examples/light_server.toml` adds lightwalletd in front of the node.
+
 `examples/failing_project.toml` is the negative control. The node activates the upgrade fine, but its project exits with code 3, so the whole run fails.
 
 ## Usage
@@ -89,6 +91,9 @@ timeout_secs = 900
 | `project.name` | required | Letters, digits, `-` and `_`. It names the log file. |
 | `project.run` | required | Shell command, run with `sh -c` from the plan file's directory |
 | `project.timeout_secs` | `600` | The project fails if it runs longer. zrehearse then stops the `sh` process, but not the processes that `sh` started. |
+| `light_server.kind` | none | `lightwalletd` or `zaino`. Leave out the `[light_server]` table to run without a light server. |
+| `light_server.image` | required with `kind` | Light server image, for example `electriccoinco/lightwalletd:v0.5.4` or `zingodevops/zaino:0.10.1-no-tls`. Zaino needs a `-no-tls` tag. |
+| `light_server.ready_timeout_secs` | `120` | How long the light server may take to serve the block at each tip |
 
 The node config sets only two heights. `previous` activates at height 2, and the upgrade under test activates at your height. Zebra activates the upgrades before `previous` at height 2 or lower. Later upgrades are left out, so they never activate. zrehearse has no list of upgrades. Zebra checks the names and their order.
 
@@ -103,7 +108,18 @@ zrehearse reads `getblockchaininfo` and compares it with the plan.
 5. After mining `blocks_after` more blocks, the tip is where it should be.
 6. `getaddressutxos` shows a block reward of the funded key that the next block can spend.
 
-Projects run only when all six pass. If the node never reached the planned state, a project failure would tell you nothing about your code, so projects are marked skipped instead.
+With a light server, zrehearse starts it at one block before activation, so it sees the activation block arrive. Then it calls the light server over gRPC and compares the answers with zebrad.
+
+7. One block before activation, the light server serves that block.
+8. After activation, it serves the block at the tip.
+9. `GetLightdInfo` reports the branch ID of the upgrade.
+10. `GetBlock` at the activation height and at the tip gives the same hashes as zebrad.
+11. `GetTreeState` at the same heights gives the same Sapling and Orchard trees as `z_gettreestate`.
+12. `GetSubtreeRoots` streams to the end for Sapling and Orchard, with as many roots as `z_getsubtreesbyindex`.
+
+zrehearse makes the gRPC calls with `fullstorydev/grpcurl:v1.9.3` in Docker. It uses the `.proto` files of lightwallet-protocol v0.5.0 in `proto/`, because Zaino has no gRPC reflection. The light server and grpcurl share zebrad's network namespace, so zrehearse creates no Docker network.
+
+Projects run only when all checks pass. If the node never reached the planned state, a project failure would tell you nothing about your code, so projects are marked skipped instead.
 
 ## What your project gets
 
@@ -120,6 +136,7 @@ The project command runs with these environment variables.
 | `ZREHEARSE_TIP` | `120` |
 | `ZREHEARSE_FUNDED_ADDRESS` | `tmV6ufuf8ERqa6nh5CdiyLyzvhXrpAojC7R` |
 | `ZREHEARSE_FUNDED_KEY` | The secret key of that address in WIF, for the compressed public key |
+| `ZREHEARSE_LIGHTWALLETD_URL` | `http://127.0.0.1:32895`, the light server's gRPC endpoint without TLS. Set only with a `[light_server]`. |
 
 zrehearse makes a new transparent key for each run, and every block pays its reward to that key. Zcash lets a block reward be spent only 100 blocks after its block. With the default heights, the next block can spend the rewards of blocks 1 to 21 when projects run, and all of them were mined before activation. Zebra on regtest permits a block reward to be spent to a transparent address. Thus a project can sign a transaction with its own code and send it with `sendrawtransaction`. `getaddressutxos` lists the outputs of the address. `report.json` gives the address as `funded_address`.
 
@@ -179,6 +196,7 @@ Everything goes to `out/<plan file name>/`, for example `out/nu6_3/` for `exampl
 - `zebrad.log` holds the last 300 lines of the node's log.
 - `project-<name>.log` holds each project's stdout and stderr.
 - `zebrad.toml` is the config the node ran with.
+- `lightserver.log` holds the last 300 lines of the light server's log, and `report.json` has a `light_server` object like `node`.
 
 When a run fails, zrehearse also prints the last zebrad error line.
 
@@ -191,14 +209,13 @@ A new upgrade needs no change to zrehearse. Point a plan at a Zebra image that k
 
 ## Not built yet
 
-- Shadow forks. The chain starts empty, not from a copy of mainnet state.
-- Light servers. Zaino or lightwalletd in front of the node, so wallet SDKs can sync through them.
+- Shadow forks. The chain starts empty, not from a copy of mainnet state. Zebra can carry Mainnet history as a configured Testnet with a moved activation height, but that needs a state of about 255 GiB.
 - A transaction generator that sends every transaction type across the activation height.
 - Windows. Projects run under `sh`.
 
 ## Development
 
-The tests in `tests/rehearse.rs` run real rehearsals, so they need Docker and the Zebra images `zfnd/zebra:6.2.3` and `zfnd/zebra:7.0.0-rc.0`. They rehearse both examples, the NU6.3 example on a second image, a misspelled upgrade, an upgrade the image does not know and a container that fails to start.
+The tests in `tests/rehearse.rs` run real rehearsals, so they need Docker and the Zebra images `zfnd/zebra:6.2.3` and `zfnd/zebra:7.0.0-rc.0`. They rehearse the examples, the NU6.3 example on a second image, Zaino on NU6.3 and NU7, a misspelled upgrade, an upgrade the image does not know and a container that fails to start. They also need `electriccoinco/lightwalletd:v0.5.4`, `zingodevops/zaino:0.10.1-no-tls` and `fullstorydev/grpcurl:v1.9.3`.
 
 ```sh
 cargo fmt --check

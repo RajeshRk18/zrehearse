@@ -1,84 +1,70 @@
 //! A throwaway regtest Zebra node in Docker, and a small JSON-RPC client for it.
-//!
-//! We drive the `docker` CLI instead of the Docker API. It is already on every
-//! machine that can run the rehearsal, and its errors are the ones users know.
 
+use crate::docker::Container;
 use anyhow::{Context, Result, bail};
 use serde_json::{Value, json};
 use std::path::Path;
-use std::process::Command;
 use std::time::{Duration, Instant};
 
 /// Port zebrad listens on inside the container.
-const RPC_PORT: u16 = 18232;
-/// Label on every container we start, so leftovers are easy to find:
-/// `docker ps -a --filter label=zrehearse`.
-const LABEL: &str = "zrehearse";
+pub const RPC_PORT: u16 = 18232;
 
 pub struct Node {
-    container: String,
+    pub container: Container,
     pub rpc_url: String,
     agent: ureq::Agent,
-    keep: bool,
 }
 
 impl Node {
-    /// Starts zebrad with `config` mounted as its `zebrad.toml`.
-    pub fn start(image: &str, config: &Path, miner_address: &str, keep: bool) -> Result<Self> {
+    /// Starts zebrad with `config` mounted as its `zebrad.toml`. It also
+    /// publishes `extra_ports`, for containers that share its network.
+    pub fn start(
+        run_id: &str,
+        image: &str,
+        config: &Path,
+        miner_address: &str,
+        extra_ports: &[u16],
+        keep: bool,
+    ) -> Result<Self> {
         let config = std::fs::canonicalize(config)
             .with_context(|| format!("resolving {}", config.display()))?;
-        let container = format!("zrehearse-{}-{}", std::process::id(), unix_millis());
         let mount = format!("{}:/home/zebra/.config/zebrad.toml:ro", config.display());
-        let started = docker(&[
-            "run",
-            "-d",
-            "--name",
-            &container,
-            "--label",
-            LABEL,
-            "-p",
-            &format!("127.0.0.1::{RPC_PORT}"),
+        let ports: Vec<String> = std::iter::once(&RPC_PORT)
+            .chain(extra_ports)
+            .map(|p| format!("127.0.0.1::{p}"))
+            .collect();
+        let mut args: Vec<&str> = ports.iter().flat_map(|p| ["-p", p.as_str()]).collect();
+        let rpc_listen = format!("ZEBRA_RPC__LISTEN_ADDR=0.0.0.0:{RPC_PORT}");
+        let miner = format!("ZEBRA_MINING__MINER_ADDRESS={miner_address}");
+        args.extend([
             "-v",
             &mount,
             "-e",
-            &format!("ZEBRA_RPC__LISTEN_ADDR=0.0.0.0:{RPC_PORT}"),
+            &rpc_listen,
             "-e",
             "ZEBRA_RPC__ENABLE_COOKIE_AUTH=false",
             "-e",
-            &format!("ZEBRA_MINING__MINER_ADDRESS={miner_address}"),
+            &miner,
             image,
         ]);
-        if let Err(e) = started {
-            // `docker run` can fail after it created the container, for
-            // example when the port bind fails.
-            remove(&container);
-            return Err(e.context(format!("starting {image}")));
-        }
-
-        // From here on, Drop removes the container even if setup fails.
-        let mut node = Node {
+        let mut container = Container::run(&format!("{run_id}-zebrad"), &args, keep)
+            .with_context(|| format!("starting {image}"))?;
+        // zebrad can exit before Docker reports the port. The empty `rpc_url`
+        // then makes `wait_ready` report the exit.
+        let rpc_url = container
+            .host_port(RPC_PORT)?
+            .map(|hp| format!("http://{hp}"))
+            .unwrap_or_default();
+        container.note = format!(" (RPC at {rpc_url})");
+        Ok(Node {
             container,
-            rpc_url: String::new(),
+            rpc_url,
             agent: ureq::Agent::config_builder()
                 .timeout_global(Some(Duration::from_secs(60)))
                 .http_status_as_error(false)
                 .build()
                 .into(),
-            keep,
-        };
-        let mapped = match docker(&["port", &node.container, &RPC_PORT.to_string()]) {
-            Ok(mapped) => mapped,
-            // zebrad can exit before Docker reports the port. The empty
-            // `rpc_url` then makes `wait_ready` report the exit.
-            Err(_) if node.status()?.1.is_some() => return Ok(node),
-            Err(e) => return Err(e),
-        };
-        let host_port = mapped
-            .lines()
-            .find(|l| l.starts_with("127.0.0.1:"))
-            .with_context(|| format!("no host port in `docker port` output: {mapped:?}"))?;
-        node.rpc_url = format!("http://{host_port}");
-        Ok(node)
+        })
     }
 
     /// Waits until the RPC server answers. Stops early if zebrad exits.
@@ -91,37 +77,13 @@ impl Node {
                     bail!("zebrad RPC not ready after {}s: {e:#}", timeout.as_secs())
                 }
                 Err(_) => {
-                    if let (state, Some(code)) = self.status()? {
+                    if let (state, Some(code)) = self.container.status()? {
                         bail!("zebrad {state} with code {code} before its RPC answered");
                     }
                     std::thread::sleep(Duration::from_millis(500));
                 }
             }
         }
-    }
-
-    /// Docker's state for the container, such as `running` or `exited`, and
-    /// the exit code once it is not running.
-    pub fn status(&self) -> Result<(String, Option<i64>)> {
-        let out = docker(&[
-            "inspect",
-            "-f",
-            "{{.State.Status}} {{.State.ExitCode}}",
-            &self.container,
-        ])?;
-        let mut parts = out.split_whitespace();
-        let state = parts
-            .next()
-            .with_context(|| format!("empty `docker inspect` output for {}", self.container))?
-            .to_string();
-        if state == "running" {
-            return Ok((state, None));
-        }
-        let code = parts
-            .next()
-            .and_then(|c| c.parse().ok())
-            .with_context(|| format!("no exit code in `docker inspect` output {out:?}"))?;
-        Ok((state, Some(code)))
     }
 
     pub fn rpc(&self, method: &str, params: Value) -> Result<Value> {
@@ -157,121 +119,5 @@ impl Node {
             self.rpc("generate", json!([n]))?;
         }
         Ok(())
-    }
-
-    /// The last lines of zebrad's log, for the report when something breaks.
-    pub fn logs(&self) -> String {
-        Command::new("docker")
-            .args(["logs", "--tail", "300", &self.container])
-            .output()
-            .map(|o| {
-                let mut s = String::from_utf8_lossy(&o.stdout).into_owned();
-                s.push_str(&String::from_utf8_lossy(&o.stderr));
-                s
-            })
-            .unwrap_or_else(|e| format!("could not read logs: {e}"))
-    }
-}
-
-impl Drop for Node {
-    fn drop(&mut self) {
-        if self.keep {
-            eprintln!(
-                "keeping container {} (RPC at {})",
-                self.container, self.rpc_url
-            );
-            return;
-        }
-        remove(&self.container);
-    }
-}
-
-/// Removes the container and reports a failure on stderr. A container that
-/// does not exist is not a failure.
-fn remove(container: &str) {
-    match Command::new("docker")
-        .args(["rm", "-f", container])
-        .output()
-    {
-        Ok(out) => {
-            let err = String::from_utf8_lossy(&out.stderr);
-            if !out.status.success() && !err.contains("No such container") {
-                eprintln!(
-                    "warning: could not remove container {container}: {}",
-                    err.trim()
-                );
-            }
-        }
-        Err(e) => eprintln!("warning: could not run docker rm for {container}: {e}"),
-    }
-}
-
-fn docker(args: &[&str]) -> Result<String> {
-    let out = Command::new("docker")
-        .args(args)
-        .output()
-        .context("running docker")?;
-    if !out.status.success() {
-        bail!(
-            "docker {} failed: {}",
-            args[0],
-            String::from_utf8_lossy(&out.stderr).trim()
-        );
-    }
-    Ok(String::from_utf8_lossy(&out.stdout).into_owned())
-}
-
-fn unix_millis() -> u128 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_millis())
-        .unwrap_or(0)
-}
-
-/// The lines of a zebrad log that explain a failure. These are the `error:`
-/// lines zebrad prints when it cannot start, tracing `ERROR` lines and panics.
-pub fn error_lines(log: &str) -> Vec<String> {
-    log.lines()
-        .filter_map(|line| {
-            let line = line.trim();
-            if let Some(msg) = line.strip_prefix("error: ") {
-                return Some(msg.to_string());
-            }
-            if line.contains("panicked at") {
-                return Some(line.to_string());
-            }
-            // Tracing lines look like `<timestamp>Z ERROR <target>: <message>`.
-            let mut words = line.split_whitespace();
-            let stamped = words.next().is_some_and(|w| w.ends_with('Z'));
-            if stamped && words.next() == Some("ERROR") {
-                return Some(words.collect::<Vec<_>>().join(" "));
-            }
-            None
-        })
-        .collect()
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn error_lines_keeps_errors_and_panics_only() {
-        let log = "\
-2026-10-06T04:02:42.926153Z  INFO zebrad::components::tracing: started
-2026-10-06T04:02:43.000000Z  WARN zebra_network: no peers
-2026-10-06T04:02:44.000000Z ERROR zebra_state: block rejected height=20
-thread 'main' panicked at zebra-chain/src/parameters/network.rs:187:18:
-error: zebrad fatal error: Configuration error: unknown field `Nu7`
-                     continued text that is not an error line
-";
-        assert_eq!(
-            error_lines(log),
-            [
-                "zebra_state: block rejected height=20",
-                "thread 'main' panicked at zebra-chain/src/parameters/network.rs:187:18:",
-                "zebrad fatal error: Configuration error: unknown field `Nu7`",
-            ]
-        );
     }
 }

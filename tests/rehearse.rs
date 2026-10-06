@@ -148,20 +148,42 @@ fn failed_container_start_leaves_no_container() {
 
 /// Rehearses a plan with this `[upgrade]` table on Zebra 6.2.3, written to a temp dir.
 fn rehearse_upgrade(dir: &str, upgrade: &str) -> (Output, String, Value) {
+    rehearse_toml(
+        dir,
+        &format!("name = \"t\"\n[node]\nimage = \"zfnd/zebra:6.2.3\"\n[upgrade]\n{upgrade}"),
+    )
+}
+
+/// Rehearses this plan text, written to a temp dir.
+fn rehearse_toml(dir: &str, plan_text: &str) -> (Output, String, Value) {
     let dir = format!("{}/{dir}", env!("CARGO_TARGET_TMPDIR"));
     std::fs::create_dir_all(&dir).unwrap();
     let plan = format!("{dir}/plan.toml");
-    std::fs::write(
-        &plan,
-        format!("name = \"t\"\n[node]\nimage = \"zfnd/zebra:6.2.3\"\n[upgrade]\n{upgrade}"),
-    )
-    .unwrap();
+    std::fs::write(&plan, plan_text).unwrap();
     let out = format!("{dir}/out");
     let (output, text) = run_zrehearse(&plan, &out);
     let report = std::fs::read_to_string(format!("{out}/report.json"))
         .unwrap_or_else(|e| panic!("reading report.json: {e}\n{text}"));
     (output, text, serde_json::from_str(&report).unwrap())
 }
+
+fn check<'a>(report: &'a Value, name: &str) -> &'a Value {
+    report["checks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|c| c["name"] == name)
+        .unwrap_or_else(|| panic!("no check {name:?} in {report:#}"))
+}
+
+const LIGHT_CHECKS: [&str; 6] = [
+    "light server follows the chain before activation",
+    "light server reaches the tip",
+    "light server reports the new branch",
+    "light server serves blocks past activation",
+    "light server tree states match the node",
+    "light server streams every subtree root",
+];
 
 #[test]
 #[ignore = "needs Docker and zfnd/zebra:6.2.3"]
@@ -195,4 +217,51 @@ fn upgrade_the_image_does_not_know_is_a_setup_error() {
         "{setup}"
     );
     assert_eq!(report["passed"], false);
+}
+
+#[test]
+#[ignore = "needs Docker, zfnd/zebra:7.0.0-rc.0 and electriccoinco/lightwalletd:v0.5.4"]
+fn lightwalletd_serves_nu7() {
+    let run = rehearse("examples/light_server.toml", "out/e2e-lightwalletd");
+    assert!(run.output.status.success(), "{}", run.stdout);
+    for name in LIGHT_CHECKS {
+        assert_eq!(check(&run.report, name)["passed"], true, "{name}");
+    }
+    assert_eq!(run.report["light_server"]["kind"], "lightwalletd");
+    assert_eq!(run.report["projects"][0]["passed"], true);
+}
+
+#[test]
+#[ignore = "needs Docker, zfnd/zebra:6.2.3 and zingodevops/zaino:0.10.1-no-tls"]
+fn zaino_serves_nu6_3() {
+    let (output, text, report) = rehearse_toml(
+        "zaino-nu6_3",
+        "name = \"t\"\n[node]\nimage = \"zfnd/zebra:6.2.3\"\n\
+         [upgrade]\nname = \"NU6.3\"\nprevious = \"NU6.2\"\n\
+         [light_server]\nkind = \"zaino\"\nimage = \"zingodevops/zaino:0.10.1-no-tls\"\n",
+    );
+    assert!(output.status.success(), "{text}");
+    for name in LIGHT_CHECKS {
+        assert_eq!(check(&report, name)["passed"], true, "{name}");
+    }
+}
+
+/// Zaino 0.10.1 pins zcash_protocol 0.10.6, which does not know the NU7
+/// branch ID, so its index stops at the block before activation.
+#[test]
+#[ignore = "needs Docker, zfnd/zebra:7.0.0-rc.0 and zingodevops/zaino:0.10.1-no-tls"]
+fn zaino_0_10_1_stops_at_nu7() {
+    let (output, text, report) = rehearse_toml(
+        "zaino-nu7",
+        "name = \"t\"\n[node]\nimage = \"zfnd/zebra:7.0.0-rc.0\"\n\
+         [upgrade]\nname = \"NU7\"\nprevious = \"NU6.3\"\n\
+         [light_server]\nkind = \"zaino\"\nimage = \"zingodevops/zaino:0.10.1-no-tls\"\n\
+         ready_timeout_secs = 20\n",
+    );
+    assert_eq!(output.status.code(), Some(1), "{text}");
+    assert_eq!(check(&report, LIGHT_CHECKS[0])["passed"], true);
+    let tip = check(&report, LIGHT_CHECKS[1]);
+    assert_eq!(tip["passed"], false);
+    let detail = tip["detail"].as_str().unwrap();
+    assert!(detail.contains("best chain tip [109]"), "{detail}");
 }

@@ -1,9 +1,11 @@
 //! One rehearsal. Start the node, mine across the activation height, check the
 //! upgrade really activated, then run each project against the node.
 
+use crate::docker::{self, Container};
 use crate::key::FundedKey;
-use crate::node::{self, Node};
-use crate::plan::{COINBASE_MATURITY, Plan, Project};
+use crate::lightserver::{self, LightServer, display_hash};
+use crate::node::Node;
+use crate::plan::{COINBASE_MATURITY, LightServerKind, Plan, Project};
 use anyhow::{Context, Result};
 use serde::Serialize;
 use serde_json::{Value, json};
@@ -32,17 +34,28 @@ pub struct Report {
     /// the upgrade.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub setup_error: Option<String>,
-    pub node: Option<NodeReport>,
+    pub node: Option<ContainerReport>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub light_server: Option<LightServerReport>,
 }
 
 #[derive(Serialize)]
-pub struct NodeReport {
+pub struct ContainerReport {
     /// Docker's state for the container at the end of the run.
     pub state: String,
     pub exit_code: Option<i64>,
-    /// Error lines from the zebrad log, collected when the run failed.
+    /// Error lines from the container log, collected when the run failed.
     pub errors: Vec<String>,
     pub log: String,
+}
+
+#[derive(Serialize)]
+pub struct LightServerReport {
+    pub kind: LightServerKind,
+    pub image: String,
+    pub url: String,
+    #[serde(flatten)]
+    pub container: ContainerReport,
 }
 
 /// The node could not be prepared for the rehearsal.
@@ -99,10 +112,32 @@ pub fn run(plan: &Plan, out: &Path, keep: bool) -> Result<Report> {
         passed: false,
         setup_error: None,
         node: None,
+        light_server: None,
     };
 
-    let node = Node::start(&plan.node.image, &config, &key.address, keep)?;
-    let activated = activation_checks(plan, &node, &mut report);
+    let run_id = docker::run_id();
+    let light_ports: Vec<u16> = plan
+        .light_server
+        .iter()
+        .map(|s| lightserver::port(s.kind))
+        .collect();
+    let node = Node::start(
+        &run_id,
+        &plan.node.image,
+        &config,
+        &key.address,
+        &light_ports,
+        keep,
+    )?;
+    // Declared after the node, so Drop removes it first.
+    let mut light = None;
+    let start_light = || {
+        plan.light_server
+            .as_ref()
+            .map(|spec| LightServer::start(spec, &run_id, &node, out, keep))
+            .transpose()
+    };
+    let activated = activation_checks(plan, &node, &mut light, start_light, &mut report);
     if let Err(e) = &activated {
         if e.downcast_ref::<SetupError>().is_some() {
             report.setup_error = Some(format!("{e:#}"));
@@ -118,7 +153,7 @@ pub fn run(plan: &Plan, out: &Path, keep: bool) -> Result<Report> {
 
     for project in &plan.projects {
         let result = if activated {
-            run_project(project, plan, &node, &report, &key, out)
+            run_project(project, plan, &node, light.as_ref(), &report, &key, out)
         } else {
             // The chain never reached the planned state, so a project result
             // would say nothing about the upgrade.
@@ -136,21 +171,24 @@ pub fn run(plan: &Plan, out: &Path, keep: bool) -> Result<Report> {
         report.projects.push(result);
     }
 
-    let log = node.logs();
-    let log_path = out.join("zebrad.log");
-    write(&log_path, &log)?;
     report.passed = activated && report.projects.iter().all(|p| p.passed);
-    let (state, exit_code) = node.status()?;
-    report.node = Some(NodeReport {
-        state,
-        exit_code,
-        errors: if report.passed {
-            Vec::new()
-        } else {
-            node::error_lines(&log)
-        },
-        log: log_path.display().to_string(),
-    });
+    report.node = Some(container_report(
+        &node.container,
+        &out.join("zebrad.log"),
+        report.passed,
+    )?);
+    if let (Some(ls), Some(spec)) = (&light, &plan.light_server) {
+        report.light_server = Some(LightServerReport {
+            kind: spec.kind,
+            image: spec.image.clone(),
+            url: ls.url.clone(),
+            container: container_report(
+                &ls.container,
+                &out.join("lightserver.log"),
+                report.passed,
+            )?,
+        });
+    }
     write(
         &out.join("report.json"),
         serde_json::to_string_pretty(&report)? + "\n",
@@ -158,9 +196,33 @@ pub fn run(plan: &Plan, out: &Path, keep: bool) -> Result<Report> {
     Ok(report)
 }
 
+/// Writes the container's log to `path` and describes the container.
+fn container_report(container: &Container, path: &Path, passed: bool) -> Result<ContainerReport> {
+    let log = container.logs();
+    write(path, &log)?;
+    let (state, exit_code) = container.status()?;
+    Ok(ContainerReport {
+        state,
+        exit_code,
+        errors: if passed {
+            Vec::new()
+        } else {
+            docker::error_lines(&log)
+        },
+        log: path.display().to_string(),
+    })
+}
+
 /// Mines up to the block before activation, then across it, checking what
-/// zebrad reports at each step. An `Err` means the node itself misbehaved.
-fn activation_checks(plan: &Plan, node: &Node, report: &mut Report) -> Result<()> {
+/// zebrad (and the light server, if any) reports at each step. An `Err` means
+/// the node itself misbehaved.
+fn activation_checks(
+    plan: &Plan,
+    node: &Node,
+    light: &mut Option<LightServer>,
+    start_light: impl FnOnce() -> Result<Option<LightServer>>,
+    report: &mut Report,
+) -> Result<()> {
     let target = &plan.upgrade.name;
     let previous = &plan.upgrade.previous;
     let height = plan.upgrade.height;
@@ -181,6 +243,34 @@ fn activation_checks(plan: &Plan, node: &Node, report: &mut Report) -> Result<()
 
     let tip = node.height()?;
     node.mine((height - 1).saturating_sub(tip))?;
+
+    // The light server starts before the boundary, so it sees the
+    // activation block arrive.
+    *light = start_light().map_err(|e| SetupError(format!("{e:#}")))?;
+    let light_timeout = plan
+        .light_server
+        .as_ref()
+        .map(|s| Duration::from_secs(s.ready_timeout_secs));
+    let mut light_follows = true;
+    if let (Some(ls), Some(timeout)) = (light.as_ref(), light_timeout) {
+        let reached = ls.wait_for_height(height - 1, timeout);
+        light_follows = reached.is_ok();
+        let detail = match reached {
+            Ok(info) => format!(
+                "height {}, branch {}",
+                info["blockHeight"].as_str().unwrap_or("?"),
+                info["consensusBranchId"].as_str().unwrap_or("?")
+            ),
+            Err(e) => format!("{e:#}"),
+        };
+        check(
+            report,
+            "light server follows the chain before activation",
+            light_follows,
+            detail,
+        );
+    }
+
     let info = node.rpc("getblockchaininfo", json!([]))?;
     let (branch, upgrade) = find_upgrade(&info, target).context("upgrade vanished")?;
     report.branch_id = Some(branch.clone());
@@ -268,7 +358,120 @@ fn activation_checks(plan: &Plan, node: &Node, report: &mut Report) -> Result<()
         spendable > 0,
         format!("{spendable} spendable outputs for {address} at tip {got}"),
     );
+
+    if let (Some(ls), Some(timeout), true) = (light.as_ref(), light_timeout, light_follows) {
+        light_server_checks(ls, node, report, [height, got], &branch, timeout);
+    }
     Ok(())
+}
+
+/// Compares what the light server serves at `heights` (activation and tip)
+/// with what zebrad reports.
+fn light_server_checks(
+    ls: &LightServer,
+    node: &Node,
+    report: &mut Report,
+    heights: [u32; 2],
+    branch: &str,
+    timeout: Duration,
+) {
+    let info = match ls.wait_for_height(heights[1], timeout) {
+        Ok(info) => info,
+        Err(e) => {
+            return check(
+                report,
+                "light server reaches the tip",
+                false,
+                format!("{e:#}"),
+            );
+        }
+    };
+    let at = info["blockHeight"].as_str().unwrap_or("?");
+    check(
+        report,
+        "light server reaches the tip",
+        true,
+        format!("height {at}"),
+    );
+    let reported = info["consensusBranchId"].as_str().unwrap_or_default();
+    check(
+        report,
+        "light server reports the new branch",
+        reported == branch,
+        format!("consensusBranchId {reported}, expected {branch}"),
+    );
+
+    record(report, "light server serves blocks past activation", || {
+        let mut detail = Vec::new();
+        let mut same = true;
+        for h in heights {
+            let block = ls.call_json("GetBlock", &format!("{{\"height\":{h}}}"))?;
+            let got = display_hash(block["hash"].as_str().context("GetBlock has no hash")?)?;
+            let want = node.rpc("getblock", json!([h.to_string(), 1]))?;
+            let want = want["hash"].as_str().unwrap_or_default();
+            same &= got == want;
+            detail.push(if got == want {
+                format!("{h} {got}")
+            } else {
+                format!("{h} {got}, zebrad {want}")
+            });
+        }
+        Ok((same, detail.join(", ")))
+    });
+
+    record(report, "light server tree states match the node", || {
+        let mut detail = Vec::new();
+        let mut same = true;
+        for h in heights {
+            let got = ls.call_json("GetTreeState", &format!("{{\"height\":{h}}}"))?;
+            let want = node.rpc("z_gettreestate", json!([h.to_string()]))?;
+            let mut differ = Vec::new();
+            for (ours, theirs) in [("saplingTree", "sapling"), ("orchardTree", "orchard")] {
+                let state = &want[theirs]["commitments"]["finalState"];
+                if got[ours].as_str().unwrap_or_default() != state.as_str().unwrap_or_default() {
+                    differ.push(ours);
+                }
+            }
+            if got["hash"] != want["hash"] {
+                differ.push("hash");
+            }
+            same &= differ.is_empty();
+            detail.push(if differ.is_empty() {
+                format!("{h} same")
+            } else {
+                format!("{h} differs in {}", differ.join(" and "))
+            });
+        }
+        Ok((same, detail.join(", ")))
+    });
+
+    record(report, "light server streams every subtree root", || {
+        let mut detail = Vec::new();
+        let mut same = true;
+        for pool in ["sapling", "orchard"] {
+            let request =
+                format!("{{\"startIndex\":0,\"shieldedProtocol\":\"{pool}\",\"maxEntries\":0}}");
+            let out = ls.call("GetSubtreeRoots", &request)?;
+            let got = serde_json::Deserializer::from_str(&out)
+                .into_iter::<Value>()
+                .collect::<Result<Vec<_>, _>>()
+                .with_context(|| format!("GetSubtreeRoots returned {out:?}"))?
+                .len();
+            let want = node.rpc("z_getsubtreesbyindex", json!([pool, 0]))?;
+            let want = want["subtrees"].as_array().map_or(0, Vec::len);
+            same &= got == want;
+            detail.push(format!("{pool} {got} of {want}"));
+        }
+        Ok((same, detail.join(", ")))
+    });
+}
+
+/// Records a check whose evaluation can fail. A failure fails the check.
+fn record(report: &mut Report, name: &str, eval: impl FnOnce() -> Result<(bool, String)>) {
+    match eval() {
+        Ok((passed, detail)) => check(report, name, passed, detail),
+        Err(e) => check(report, name, false, format!("{e:#}")),
+    }
 }
 
 fn find_upgrade(info: &Value, name: &str) -> Option<(String, Value)> {
@@ -291,6 +494,7 @@ fn run_project(
     project: &Project,
     plan: &Plan,
     node: &Node,
+    light: Option<&LightServer>,
     report: &Report,
     key: &FundedKey,
     out: &Path,
@@ -330,6 +534,7 @@ fn run_project(
             )
             .env("ZREHEARSE_FUNDED_ADDRESS", &key.address)
             .env("ZREHEARSE_FUNDED_KEY", &key.wif)
+            .envs(light.map(|ls| ("ZREHEARSE_LIGHTWALLETD_URL", ls.url.as_str())))
             .env(
                 "ZREHEARSE_TIP",
                 (plan.upgrade.height + plan.upgrade.blocks_after).to_string(),

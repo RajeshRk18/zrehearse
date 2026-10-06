@@ -1,7 +1,7 @@
 //! The rehearsal plan, read from a TOML file, and the Zebra config built from it.
 
 use anyhow::{Context, Result, bail};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
 /// Height where `upgrade.previous` activates. Zebra activates the upgrades
@@ -20,6 +20,7 @@ pub struct Plan {
     pub upgrade: UpgradeSpec,
     #[serde(default, rename = "project")]
     pub projects: Vec<Project>,
+    pub light_server: Option<LightServerSpec>,
     /// Directory of the plan file. Project commands run from here.
     #[serde(skip)]
     pub base_dir: PathBuf,
@@ -44,6 +45,23 @@ pub struct UpgradeSpec {
     pub height: u32,
     #[serde(default = "default_blocks_after")]
     pub blocks_after: u32,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LightServerSpec {
+    pub kind: LightServerKind,
+    pub image: String,
+    /// How long the light server may take to reach each tip.
+    #[serde(default = "default_ready_timeout")]
+    pub ready_timeout_secs: u64,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum LightServerKind {
+    Lightwalletd,
+    Zaino,
 }
 
 #[derive(Debug, Deserialize)]
@@ -228,6 +246,23 @@ mod tests {
         );
         let unsafe_name = format!("{upgrade}[[project]]\nname = \"../x\"\nrun = \"true\"\n");
         assert!(with_upgrade(&unsafe_name).is_err());
+    }
+
+    #[test]
+    fn reads_the_light_server() {
+        let p = plan(&format!(
+            "name = \"t\"\n{NODE}[upgrade]\nname = \"NU7\"\nprevious = \"NU6.3\"\n\
+             [light_server]\nkind = \"zaino\"\nimage = \"zingodevops/zaino:0.10.1-no-tls\"\n"
+        ))
+        .unwrap();
+        let ls = p.light_server.unwrap();
+        assert!(matches!(ls.kind, LightServerKind::Zaino));
+        assert_eq!(ls.ready_timeout_secs, 120);
+        let bad = plan(&format!(
+            "name = \"t\"\n{NODE}[upgrade]\nname = \"NU7\"\nprevious = \"NU6.3\"\n\
+             [light_server]\nkind = \"lwd\"\nimage = \"x\"\n"
+        ));
+        assert!(bad.unwrap_err().to_string().contains("unknown variant"));
     }
 
     #[test]

@@ -4,7 +4,9 @@
 //! a chosen height, mines across that height, checks the upgrade really took
 //! effect, and then runs your project's own tests against the node.
 
+mod docker;
 mod key;
+mod lightserver;
 mod node;
 mod plan;
 mod rehearse;
@@ -110,13 +112,17 @@ fn real_main() -> Result<bool> {
         };
         println!("{}  project {}  ({how})", mark(p.passed), p.name);
     }
-    if let Some(error) = report.node.as_ref().and_then(|n| n.errors.last()) {
-        // The last error line is the most specific, for example the cause
-        // after zebrad's generic config message.
-        println!(
-            "zebrad error  {error}  (log {})",
-            out.join("zebrad.log").display()
-        );
+    // The last error line is the most specific, for example the cause after
+    // zebrad's generic config message.
+    if let Some(node) = &report.node
+        && let Some(error) = node.errors.last()
+    {
+        println!("zebrad error  {error}  (log {})", node.log);
+    }
+    if let Some(ls) = &report.light_server
+        && let Some(error) = ls.container.errors.last()
+    {
+        println!("light server error  {error}  (log {})", ls.container.log);
     }
     if let Some(error) = &report.setup_error {
         bail!("{error}\nreport: {}", out.join("report.json").display());
