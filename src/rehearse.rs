@@ -3,7 +3,7 @@
 
 use crate::key::FundedKey;
 use crate::node::{self, Node};
-use crate::plan::{Plan, Project};
+use crate::plan::{COINBASE_MATURITY, Plan, Project};
 use anyhow::{Context, Result};
 use serde::Serialize;
 use serde_json::{Value, json};
@@ -247,6 +247,26 @@ fn activation_checks(plan: &Plan, node: &Node, report: &mut Report) -> Result<()
         "chain grows after activation",
         got == want,
         format!("tip {got}, expected {want}"),
+    );
+
+    // A block reward is spendable in block `height + COINBASE_MATURITY`.
+    let address = report.funded_address.clone();
+    let utxos = node.rpc("getaddressutxos", json!([{ "addresses": [address] }]))?;
+    let spendable = utxos
+        .as_array()
+        .context("getaddressutxos did not return an array")?
+        .iter()
+        .filter(|u| {
+            u["height"]
+                .as_u64()
+                .is_some_and(|h| h + u64::from(COINBASE_MATURITY) <= u64::from(got) + 1)
+        })
+        .count();
+    check(
+        report,
+        "funded key has a spendable block reward",
+        spendable > 0,
+        format!("{spendable} spendable outputs for {address} at tip {got}"),
     );
     Ok(())
 }

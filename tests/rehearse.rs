@@ -65,6 +65,8 @@ fn nu6_3_rehearsal_passes() {
     );
     assert_eq!(run.report["projects"][0]["name"], "rpc-smoke");
     assert_eq!(run.report["projects"][0]["passed"], true);
+    assert_eq!(run.report["projects"][1]["name"], "spend");
+    assert_eq!(run.report["projects"][1]["passed"], true);
 }
 
 #[test]
@@ -75,6 +77,8 @@ fn nu7_rehearsal_passes() {
     assert_eq!(run.report["branch_id"], "77190ad9");
     assert_eq!(run.report["previous_branch_id"], "37a5165b");
     assert_eq!(run.report["projects"][0]["passed"], true);
+    assert_eq!(run.report["projects"][1]["name"], "spend");
+    assert_eq!(run.report["projects"][1]["passed"], true);
 }
 
 #[test]

@@ -24,9 +24,11 @@ rehearsing NU6.3 at height 110 on zfnd/zebra:6.2.3
 PASS  previous upgrade in force before activation  (tip 109, chaintip 5437f330, expected NU6.2 branch 5437f330)
 PASS  pending one block before activation  (tip 109, status "pending", nextblock 37a5165b, expected branch 37a5165b)
 PASS  active at the activation height  (tip 110, status "active", chaintip 37a5165b)
-PASS  activation block is readable  (hash 395c97cd...)
+PASS  activation block is readable  (hash e653d57e...)
 PASS  chain grows after activation  (tip 120, expected 120)
+PASS  funded key has a spendable block reward  (21 spendable outputs for tmVyvHg46HFaiRbHuB5pVxNQ4Nj7YRjxdjc at tip 120)
 PASS  project rpc-smoke  (exit 0, 0.2s, log out/nu6_3/project-rpc-smoke.log)
+PASS  project spend  (exit 0, 0.6s, log out/nu6_3/project-spend.log)
 REHEARSAL PASSED  report: out/nu6_3/report.json
 ```
 
@@ -76,8 +78,9 @@ zrehearse reads `getblockchaininfo` and compares it with the plan.
 3. At the activation height, the upgrade is `active` and `consensus.chaintip` is its branch ID.
 4. `getblock` can return the activation block.
 5. After mining `blocks_after` more blocks, the tip is where it should be.
+6. `getaddressutxos` shows a block reward of the funded key that the next block can spend.
 
-Projects run only when all five pass. If the node never reached the planned state, a project failure would tell you nothing about your code, so projects are marked skipped instead.
+Projects run only when all six pass. If the node never reached the planned state, a project failure would tell you nothing about your code, so projects are marked skipped instead.
 
 ## What your project gets
 
@@ -95,7 +98,9 @@ The project command runs with these environment variables.
 | `ZREHEARSE_FUNDED_ADDRESS` | `tmV6ufuf8ERqa6nh5CdiyLyzvhXrpAojC7R` |
 | `ZREHEARSE_FUNDED_KEY` | The secret key of that address in WIF, for the compressed public key |
 
-zrehearse makes a new transparent key for each run, and every block pays its reward to that key. Zcash lets a block reward be spent only 100 blocks after its block. With the default heights, the rewards of blocks 1 to 20 are spendable when projects run, and all of them were mined before activation. Zebra on regtest permits a block reward to be spent to a transparent address. Thus a project can sign a transaction with its own code and send it with `sendrawtransaction`. `report.json` gives the address as `funded_address`.
+zrehearse makes a new transparent key for each run, and every block pays its reward to that key. Zcash lets a block reward be spent only 100 blocks after its block. With the default heights, the next block can spend the rewards of blocks 1 to 21 when projects run, and all of them were mined before activation. Zebra on regtest permits a block reward to be spent to a transparent address. Thus a project can sign a transaction with its own code and send it with `sendrawtransaction`. `getaddressutxos` lists the outputs of the address. `report.json` gives the address as `funded_address`.
+
+`examples/spend.rs` is a sample project of this kind. Both example plans run it. It signs three spends with its own ZIP 244 code. The node must accept the spend for the new branch ID. It must reject the spend for the previous branch ID, and also the spend with the new branch ID in its header but a sighash for the previous branch.
 
 Exit code 0 means pass. Anything else, or a timeout, means fail.
 

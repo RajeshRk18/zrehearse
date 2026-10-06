@@ -18,3 +18,9 @@ curl -sf -X POST -H 'Content-Type: application/json' \
   "$ZREHEARSE_RPC_URL" | grep -q "\"chaintip\":\"$ZREHEARSE_BRANCH_ID\""
 '''
 timeout_secs = 60
+
+# A project that signs and sends transactions with the funded key. The node
+# must accept only the spend signed for the new branch ID.
+[[project]]
+name = "spend"
+run = "cargo run --quiet --example spend"
