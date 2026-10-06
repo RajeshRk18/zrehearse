@@ -1,4 +1,4 @@
-# Rehearse NU6.3 (Ironwood) on Zebra 6.2.3, activating at regtest height 20.
+# Rehearse NU6.3 (Ironwood) on Zebra 6.2.3, activating at the default height 110.
 name = "nu6.3 on zebra 6.2.3"
 
 [node]
@@ -7,8 +7,6 @@ image = "zfnd/zebra:6.2.3"
 [upgrade]
 name = "NU6.3"
 previous = "NU6.2"
-height = 20
-blocks_after = 5
 
 # A stand-in for a real project's test suite. It asks the node for its chain
 # tip branch ID and fails unless the upgrade is the one in force.

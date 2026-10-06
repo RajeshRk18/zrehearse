@@ -1,4 +1,4 @@
-# Rehearse NU7 on Zebra 7.0.0-rc.0, activating at regtest height 20.
+# Rehearse NU7 on Zebra 7.0.0-rc.0, activating at the default height 110.
 name = "nu7 on zebra 7.0.0-rc.0"
 
 [node]
@@ -7,8 +7,6 @@ image = "zfnd/zebra:7.0.0-rc.0"
 [upgrade]
 name = "NU7"
 previous = "NU6.3"
-height = 20
-blocks_after = 5
 
 # A stand-in for a real project's test suite. It asks the node for its chain
 # tip branch ID and fails unless the upgrade is the one in force.

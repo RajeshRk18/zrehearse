@@ -20,12 +20,12 @@ cargo run -- run examples/nu6_3.toml
 Output from a real run:
 
 ```
-rehearsing NU6.3 at height 20 on zfnd/zebra:6.2.3
-PASS  previous upgrade in force before activation  (tip 19, chaintip 5437f330, expected NU6.2 branch 5437f330)
-PASS  pending one block before activation  (tip 19, status "pending", nextblock 37a5165b, expected branch 37a5165b)
-PASS  active at the activation height  (tip 20, status "active", chaintip 37a5165b)
-PASS  activation block is readable  (hash 4d08f84d...)
-PASS  chain grows after activation  (tip 25, expected 25)
+rehearsing NU6.3 at height 110 on zfnd/zebra:6.2.3
+PASS  previous upgrade in force before activation  (tip 109, chaintip 5437f330, expected NU6.2 branch 5437f330)
+PASS  pending one block before activation  (tip 109, status "pending", nextblock 37a5165b, expected branch 37a5165b)
+PASS  active at the activation height  (tip 110, status "active", chaintip 37a5165b)
+PASS  activation block is readable  (hash 395c97cd...)
+PASS  chain grows after activation  (tip 120, expected 120)
 PASS  project rpc-smoke  (exit 0, 0.2s, log out/nu6_3/project-rpc-smoke.log)
 REHEARSAL PASSED  report: out/nu6_3/report.json
 ```
@@ -45,8 +45,6 @@ image = "zfnd/zebra:6.2.3"
 [upgrade]
 name = "NU6.3"
 previous = "NU6.2"
-height = 20
-blocks_after = 5
 
 [[project]]
 name = "my-wallet"
@@ -58,11 +56,10 @@ timeout_secs = 900
 |---|---|---|
 | `name` | required | Free text, copied into the report |
 | `node.image` | required | Zebra image to run. The image must know both upgrade names. |
-| `node.miner_address` | `tmSRd1r8gs77Ja67Fw1JcdoXytxsyrLTPJm` | Regtest address that receives block rewards (the same one Z3 uses) |
 | `node.ready_timeout_secs` | `120` | How long to wait for zebrad's RPC to answer |
 | `upgrade.name` | required | The upgrade under test, as Zebra names it, for example `NU6.3`. NU5 and later are supported. |
 | `upgrade.previous` | required | The upgrade active before it, for example `NU6.2` |
-| `upgrade.height` | required | Activation height, 3 or more |
+| `upgrade.height` | `110` | Activation height, 3 or more. `height + blocks_after` must be above 100, so that the funded key has a spendable block reward. |
 | `upgrade.blocks_after` | `10` | Blocks to mine after activation, before projects run |
 | `project.name` | required | Letters, digits, `-` and `_`. It names the log file. |
 | `project.run` | required | Shell command, run with `sh -c` from the plan file's directory |
@@ -94,7 +91,11 @@ The project command runs with these environment variables.
 | `ZREHEARSE_BRANCH_ID` | `37a5165b`, as zebrad reports it |
 | `ZREHEARSE_PREVIOUS_UPGRADE` | `NU6.2` |
 | `ZREHEARSE_PREVIOUS_BRANCH_ID` | `5437f330`, as zebrad reports it |
-| `ZREHEARSE_TIP` | `25` |
+| `ZREHEARSE_TIP` | `120` |
+| `ZREHEARSE_FUNDED_ADDRESS` | `tmV6ufuf8ERqa6nh5CdiyLyzvhXrpAojC7R` |
+| `ZREHEARSE_FUNDED_KEY` | The secret key of that address in WIF, for the compressed public key |
+
+zrehearse makes a new transparent key for each run, and every block pays its reward to that key. Zcash lets a block reward be spent only 100 blocks after its block. With the default heights, the rewards of blocks 1 to 20 are spendable when projects run, and all of them were mined before activation. Zebra on regtest permits a block reward to be spent to a transparent address. Thus a project can sign a transaction with its own code and send it with `sendrawtransaction`. `report.json` gives the address as `funded_address`.
 
 Exit code 0 means pass. Anything else, or a timeout, means fail.
 

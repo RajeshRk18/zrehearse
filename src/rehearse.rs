@@ -1,6 +1,7 @@
 //! One rehearsal. Start the node, mine across the activation height, check the
 //! upgrade really activated, then run each project against the node.
 
+use crate::key::FundedKey;
 use crate::node::{self, Node};
 use crate::plan::{Plan, Project};
 use anyhow::{Context, Result};
@@ -22,6 +23,8 @@ pub struct Report {
     pub previous: String,
     /// Consensus branch ID of the previous upgrade, as zebrad reports it.
     pub previous_branch_id: Option<String>,
+    /// The address that receives every block reward. Projects get its key.
+    pub funded_address: String,
     pub checks: Vec<Check>,
     pub projects: Vec<ProjectResult>,
     pub passed: bool,
@@ -81,6 +84,7 @@ pub fn run(plan: &Plan, out: &Path, keep: bool) -> Result<Report> {
     let config = out.join("zebrad.toml");
     write(&config, plan.zebrad_toml())?;
 
+    let key = FundedKey::generate()?;
     let mut report = Report {
         plan: plan.name.clone(),
         image: plan.node.image.clone(),
@@ -89,6 +93,7 @@ pub fn run(plan: &Plan, out: &Path, keep: bool) -> Result<Report> {
         branch_id: None,
         previous: plan.upgrade.previous.clone(),
         previous_branch_id: None,
+        funded_address: key.address.clone(),
         checks: Vec::new(),
         projects: Vec::new(),
         passed: false,
@@ -96,7 +101,7 @@ pub fn run(plan: &Plan, out: &Path, keep: bool) -> Result<Report> {
         node: None,
     };
 
-    let node = Node::start(&plan.node.image, &config, &plan.node.miner_address, keep)?;
+    let node = Node::start(&plan.node.image, &config, &key.address, keep)?;
     let activated = activation_checks(plan, &node, &mut report);
     if let Err(e) = &activated {
         if e.downcast_ref::<SetupError>().is_some() {
@@ -113,7 +118,7 @@ pub fn run(plan: &Plan, out: &Path, keep: bool) -> Result<Report> {
 
     for project in &plan.projects {
         let result = if activated {
-            run_project(project, plan, &node, &report, out)
+            run_project(project, plan, &node, &report, &key, out)
         } else {
             // The chain never reached the planned state, so a project result
             // would say nothing about the upgrade.
@@ -267,6 +272,7 @@ fn run_project(
     plan: &Plan,
     node: &Node,
     report: &Report,
+    key: &FundedKey,
     out: &Path,
 ) -> ProjectResult {
     let log_path = out.join(format!("project-{}.log", project.name));
@@ -302,6 +308,8 @@ fn run_project(
                 "ZREHEARSE_PREVIOUS_BRANCH_ID",
                 report.previous_branch_id.as_deref().unwrap_or_default(),
             )
+            .env("ZREHEARSE_FUNDED_ADDRESS", &key.address)
+            .env("ZREHEARSE_FUNDED_KEY", &key.wif)
             .env(
                 "ZREHEARSE_TIP",
                 (plan.upgrade.height + plan.upgrade.blocks_after).to_string(),

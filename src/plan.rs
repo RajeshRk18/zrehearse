@@ -8,8 +8,9 @@ use std::path::{Path, PathBuf};
 /// before it at the same height or lower.
 const PREVIOUS_HEIGHT: u32 = 2;
 
-/// Transparent regtest address that receives block rewards. Same default as Z3.
-const DEFAULT_MINER_ADDRESS: &str = "tmSRd1r8gs77Ja67Fw1JcdoXytxsyrLTPJm";
+/// Blocks before a transparent coinbase output can be spent, Zebra's
+/// `MIN_TRANSPARENT_COINBASE_MATURITY`.
+pub const COINBASE_MATURITY: u32 = 100;
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -28,8 +29,6 @@ pub struct Plan {
 #[serde(deny_unknown_fields)]
 pub struct NodeSpec {
     pub image: String,
-    #[serde(default = "default_miner_address")]
-    pub miner_address: String,
     #[serde(default = "default_ready_timeout")]
     pub ready_timeout_secs: u64,
 }
@@ -41,6 +40,7 @@ pub struct UpgradeSpec {
     /// The upgrade active before `name`. Empty when the plan leaves it out.
     #[serde(default)]
     pub previous: String,
+    #[serde(default = "default_height")]
     pub height: u32,
     #[serde(default = "default_blocks_after")]
     pub blocks_after: u32,
@@ -56,8 +56,10 @@ pub struct Project {
     pub timeout_secs: u64,
 }
 
-fn default_miner_address() -> String {
-    DEFAULT_MINER_ADDRESS.to_string()
+/// Late enough that the funded key's first block rewards are spendable
+/// before activation.
+fn default_height() -> u32 {
+    110
 }
 fn default_ready_timeout() -> u64 {
     120
@@ -106,6 +108,14 @@ impl Plan {
                 "upgrade height {} must be above {PREVIOUS_HEIGHT}, where `{}` activates",
                 u.height,
                 u.previous
+            );
+        }
+        let tip = u.height.saturating_add(u.blocks_after);
+        if tip <= COINBASE_MATURITY {
+            bail!(
+                "upgrade.height + upgrade.blocks_after is {tip}, but it must be above \
+                 {COINBASE_MATURITY}. A block reward is spendable only {COINBASE_MATURITY} \
+                 blocks later, and the funded key needs one."
             );
         }
         let mut seen = std::collections::HashSet::new();
@@ -162,20 +172,20 @@ mod tests {
 
     #[test]
     fn zebrad_toml_sets_only_previous_and_target() {
-        let p = with_upgrade("name = \"NU6.3\"\nprevious = \"NU6.2\"\nheight = 20\n").unwrap();
+        let p = with_upgrade("name = \"NU6.3\"\nprevious = \"NU6.2\"\nheight = 110\n").unwrap();
         assert_eq!(
             p.zebrad_toml(),
             "[network]\nnetwork = \"Regtest\"\n\n[network.testnet_parameters.activation_heights]\n\
-             \"NU6.2\" = 2\n\"NU6.3\" = 20\n"
+             \"NU6.2\" = 2\n\"NU6.3\" = 110\n"
         );
     }
 
     #[test]
     fn zebrad_toml_escapes_names() {
-        let p = with_upgrade("name = 'a\"b'\nprevious = \"NU6.2\"\nheight = 20\n").unwrap();
+        let p = with_upgrade("name = 'a\"b'\nprevious = \"NU6.2\"\n").unwrap();
         let cfg: toml::Table = toml::from_str(&p.zebrad_toml()).unwrap();
         let heights = &cfg["network"]["testnet_parameters"]["activation_heights"];
-        assert_eq!(heights["a\"b"].as_integer(), Some(20));
+        assert_eq!(heights["a\"b"].as_integer(), Some(110));
     }
 
     #[test]
@@ -194,12 +204,19 @@ mod tests {
         assert!(
             err("name = \"NU6.3\"\nprevious = \"NU6.2\"\nheight = 2\n").contains("must be above 2")
         );
-        assert!(with_upgrade("name = \"NU6.3\"\nprevious = \"NU6.2\"\nheight = 3\n").is_ok());
+        assert!(
+            err("name = \"NU6.3\"\nprevious = \"NU6.2\"\nheight = 3\nblocks_after = 97\n")
+                .contains("is 100, but it must be above 100")
+        );
+        assert!(
+            with_upgrade("name = \"NU6.3\"\nprevious = \"NU6.2\"\nheight = 3\nblocks_after = 98\n")
+                .is_ok()
+        );
     }
 
     #[test]
     fn rejects_duplicate_and_unsafe_project_names() {
-        let upgrade = "name = \"NU6.3\"\nprevious = \"NU6.2\"\nheight = 5\n";
+        let upgrade = "name = \"NU6.3\"\nprevious = \"NU6.2\"\n";
         let dup = format!(
             "{upgrade}[[project]]\nname = \"a\"\nrun = \"true\"\n[[project]]\nname = \"a\"\nrun = \"true\"\n"
         );
@@ -215,9 +232,9 @@ mod tests {
 
     #[test]
     fn defaults_fill_in() {
-        let p = with_upgrade("name = \"NU6.3\"\nprevious = \"NU6.2\"\nheight = 5\n").unwrap();
+        let p = with_upgrade("name = \"NU6.3\"\nprevious = \"NU6.2\"\n").unwrap();
         assert_eq!(p.upgrade.blocks_after, 10);
-        assert_eq!(p.node.miner_address, DEFAULT_MINER_ADDRESS);
+        assert_eq!(p.upgrade.height, 110);
         assert!(p.projects.is_empty());
     }
 }

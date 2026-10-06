@@ -111,7 +111,7 @@ fn failed_container_start_leaves_no_container() {
     let plan = format!("{dir}/plan.toml");
     std::fs::write(
         &plan,
-        format!("name = \"bad mount\"\n[node]\nimage = \"{image}\"\n[upgrade]\nname = \"NU6.3\"\nprevious = \"NU6.2\"\nheight = 20\n"),
+        format!("name = \"bad mount\"\n[node]\nimage = \"{image}\"\n[upgrade]\nname = \"NU6.3\"\nprevious = \"NU6.2\"\n"),
     )
     .unwrap();
     let (output, text) = run_zrehearse(&plan, &format!("{dir}/out"));
@@ -139,10 +139,8 @@ fn rehearse_upgrade(dir: &str, upgrade: &str) -> (Output, String, Value) {
 #[test]
 #[ignore = "needs Docker and zfnd/zebra:6.2.3"]
 fn misspelled_upgrade_reports_the_zebrad_error() {
-    let (output, text, report) = rehearse_upgrade(
-        "misspelled",
-        "name = \"Nu7\"\nprevious = \"NU6.3\"\nheight = 20\n",
-    );
+    let (output, text, report) =
+        rehearse_upgrade("misspelled", "name = \"Nu7\"\nprevious = \"NU6.3\"\n");
     assert_eq!(output.status.code(), Some(2), "{text}");
     let setup = report["setup_error"].as_str().unwrap();
     assert!(setup.contains("exited with code 1"), "{setup}");
@@ -161,10 +159,8 @@ fn misspelled_upgrade_reports_the_zebrad_error() {
 #[test]
 #[ignore = "needs Docker and zfnd/zebra:6.2.3"]
 fn upgrade_the_image_does_not_know_is_a_setup_error() {
-    let (output, text, report) = rehearse_upgrade(
-        "unsupported",
-        "name = \"NU7\"\nprevious = \"NU6.3\"\nheight = 20\n",
-    );
+    let (output, text, report) =
+        rehearse_upgrade("unsupported", "name = \"NU7\"\nprevious = \"NU6.3\"\n");
     assert_eq!(output.status.code(), Some(2), "{text}");
     let setup = report["setup_error"].as_str().unwrap();
     assert!(

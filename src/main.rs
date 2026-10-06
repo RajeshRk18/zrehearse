@@ -4,6 +4,7 @@
 //! a chosen height, mines across that height, checks the upgrade really took
 //! effect, and then runs your project's own tests against the node.
 
+mod key;
 mod node;
 mod plan;
 mod rehearse;
