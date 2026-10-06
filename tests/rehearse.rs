@@ -56,6 +56,13 @@ fn nu6_3_rehearsal_passes() {
     assert!(run.output.status.success(), "{}", run.stdout);
     assert!(run.stdout.contains("REHEARSAL PASSED"), "{}", run.stdout);
     assert_eq!(run.report["passed"], true);
+    assert_eq!(run.report["previous_branch_id"], "5437f330");
+    let checks = run.report["checks"].as_array().unwrap();
+    assert!(
+        checks
+            .iter()
+            .any(|c| c["name"] == "previous upgrade in force before activation")
+    );
     assert_eq!(run.report["projects"][0]["name"], "rpc-smoke");
     assert_eq!(run.report["projects"][0]["passed"], true);
 }

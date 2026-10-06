@@ -19,6 +19,9 @@ pub struct Report {
     pub activation_height: u32,
     /// Consensus branch ID of the upgrade, as zebrad reports it.
     pub branch_id: Option<String>,
+    pub previous: String,
+    /// Consensus branch ID of the previous upgrade, as zebrad reports it.
+    pub previous_branch_id: Option<String>,
     pub checks: Vec<Check>,
     pub projects: Vec<ProjectResult>,
     pub passed: bool,
@@ -57,6 +60,8 @@ pub fn run(plan: &Plan, out: &Path, keep: bool) -> Result<Report> {
         upgrade: plan.upgrade.name.clone(),
         activation_height: plan.upgrade.height,
         branch_id: None,
+        previous: plan.upgrade.previous.clone(),
+        previous_branch_id: None,
         checks: Vec::new(),
         projects: Vec::new(),
         passed: false,
@@ -115,6 +120,21 @@ fn activation_checks(plan: &Plan, node: &Node, report: &mut Report) -> Result<()
     let (branch, upgrade) = find_upgrade(&info, target)
         .with_context(|| format!("zebrad does not list {target} in getblockchaininfo.upgrades"))?;
     report.branch_id = Some(branch.clone());
+    let previous = &plan.upgrade.previous;
+    let (previous_branch, _) = find_upgrade(&info, previous).with_context(|| {
+        format!("zebrad does not list {previous} in getblockchaininfo.upgrades")
+    })?;
+    report.previous_branch_id = Some(previous_branch.clone());
+    let tip_branch = info["consensus"]["chaintip"].as_str().unwrap_or_default();
+    check(
+        report,
+        "previous upgrade in force before activation",
+        info["blocks"] == height - 1 && tip_branch == previous_branch,
+        format!(
+            "tip {}, chaintip {tip_branch}, expected {previous} branch {previous_branch}",
+            info["blocks"]
+        ),
+    );
     let next = info["consensus"]["nextblock"].as_str().unwrap_or_default();
     check(
         report,
@@ -219,6 +239,11 @@ fn run_project(
             .env(
                 "ZREHEARSE_BRANCH_ID",
                 report.branch_id.as_deref().unwrap_or_default(),
+            )
+            .env("ZREHEARSE_PREVIOUS_UPGRADE", &plan.upgrade.previous)
+            .env(
+                "ZREHEARSE_PREVIOUS_BRANCH_ID",
+                report.previous_branch_id.as_deref().unwrap_or_default(),
             )
             .env(
                 "ZREHEARSE_TIP",

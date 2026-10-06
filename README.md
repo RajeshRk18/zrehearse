@@ -21,9 +21,10 @@ Output from a real run:
 
 ```
 rehearsing NU6.3 at height 20 on zfnd/zebra:6.2.3
+PASS  previous upgrade in force before activation  (tip 19, chaintip 5437f330, expected NU6.2 branch 5437f330)
 PASS  pending one block before activation  (tip 19, status "pending", nextblock 37a5165b, expected branch 37a5165b)
 PASS  active at the activation height  (tip 20, status "active", chaintip 37a5165b)
-PASS  activation block is readable  (hash f100f2a3...)
+PASS  activation block is readable  (hash 4d08f84d...)
 PASS  chain grows after activation  (tip 25, expected 25)
 PASS  project rpc-smoke  (exit 0, 0.2s, log out/nu6_3/project-rpc-smoke.log)
 REHEARSAL PASSED  report: out/nu6_3/report.json
@@ -71,12 +72,13 @@ The node config sets only two heights. `previous` activates at height 2, and the
 
 zrehearse reads `getblockchaininfo` and compares it with the plan.
 
-1. One block before the activation height, the upgrade is `pending` at the planned height, and `consensus.nextblock` is its branch ID.
-2. At the activation height, the upgrade is `active` and `consensus.chaintip` is its branch ID.
-3. `getblock` can return the activation block.
-4. After mining `blocks_after` more blocks, the tip is where it should be.
+1. One block before the activation height, `consensus.chaintip` is the branch ID of `previous`.
+2. At the same tip, the upgrade is `pending` at the planned height, and `consensus.nextblock` is its branch ID.
+3. At the activation height, the upgrade is `active` and `consensus.chaintip` is its branch ID.
+4. `getblock` can return the activation block.
+5. After mining `blocks_after` more blocks, the tip is where it should be.
 
-Projects run only when all four pass. If the node never reached the planned state, a project failure would tell you nothing about your code, so projects are marked skipped instead.
+Projects run only when all five pass. If the node never reached the planned state, a project failure would tell you nothing about your code, so projects are marked skipped instead.
 
 ## What your project gets
 
@@ -88,6 +90,8 @@ The project command runs with these environment variables.
 | `ZREHEARSE_UPGRADE` | `NU6.3` |
 | `ZREHEARSE_ACTIVATION_HEIGHT` | `20` |
 | `ZREHEARSE_BRANCH_ID` | `37a5165b`, as zebrad reports it |
+| `ZREHEARSE_PREVIOUS_UPGRADE` | `NU6.2` |
+| `ZREHEARSE_PREVIOUS_BRANCH_ID` | `5437f330`, as zebrad reports it |
 | `ZREHEARSE_TIP` | `25` |
 
 Exit code 0 means pass. Anything else, or a timeout, means fail.
