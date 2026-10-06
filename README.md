@@ -154,12 +154,6 @@ When a run fails, zrehearse also prints the last zebrad error line.
 
 The process exits with 0 when the rehearsal passed and 1 when a check or project failed. It exits with 2 when the rehearsal could not run. Examples are a missing Docker, an invalid plan, a zebrad that exits before its RPC answers, and an image that does not know `name` or `previous`. Then `setup_error` in `report.json` gives the cause.
 
-## Architecture
-
-![architecture](docs/architecture.png)
-
-An interactive version is in `docs/architecture.html`.
-
 
 ## Rehearsing a new upgrade
 
