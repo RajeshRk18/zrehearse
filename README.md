@@ -217,6 +217,8 @@ A new upgrade needs no change to zrehearse. Point a plan at a Zebra image that k
 
 The tests in `tests/rehearse.rs` run real rehearsals, so they need Docker and the Zebra images `zfnd/zebra:6.2.3` and `zfnd/zebra:7.0.0-rc.0`. They rehearse the examples, the NU6.3 example on a second image, Zaino on NU6.3 and NU7, a misspelled upgrade, an upgrade the image does not know and a container that fails to start. They also need `electriccoinco/lightwalletd:v0.5.4`, `zingodevops/zaino:0.10.1-no-tls` and `fullstorydev/grpcurl:v1.9.3`.
 
+`docs/upstream-dependencies.md` lists the upstream interfaces that zrehearse depends on and how likely each one is to change.
+
 ```sh
 cargo fmt --check
 cargo clippy --all-targets -- -D warnings

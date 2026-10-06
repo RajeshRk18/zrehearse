@@ -61,6 +61,8 @@ Out of scope for now are shadow forks and Windows. See the README section
 - zrehearse has no list of upgrades. Zebra checks the upgrade names and their
   order. Do not add an upgrade table.
 - `action.yml` must stay at the repo root.
+- When code starts or stops depending on an upstream image, flag, env var or
+  RPC, update `docs/upstream-dependencies.md` in the same commit.
 
 ## Conventions
 
