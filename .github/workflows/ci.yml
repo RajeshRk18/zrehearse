@@ -32,3 +32,20 @@ jobs:
         with:
           name: rehearsal-reports
           path: out/
+
+  action:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - name: Rehearse with the action
+        id: zrehearse
+        uses: ./
+        with:
+          plan: examples/nu7.toml
+      - name: Report says passed
+        env:
+          REPORT: ${{ steps.zrehearse.outputs.report }}
+        run: |
+          grep -q '"passed": true' "$REPORT"

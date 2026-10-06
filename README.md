@@ -98,6 +98,21 @@ The project command runs with these environment variables.
 
 Exit code 0 means pass. Anything else, or a timeout, means fail.
 
+## GitHub Action
+
+```yaml
+jobs:
+  rehearse:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: RajeshRk18/zrehearse@v0
+        with:
+          plan: zrehearse/nu7.toml
+```
+
+The action needs a Linux runner, because GitHub's macOS runners have no Docker. `out` sets the output directory (default `zrehearse-out`), and the `report` output gives the path to `report.json`. With a release tag such as `@v0`, the action downloads the release binary. With any other ref, it builds zrehearse from that ref. Until the first release, use `@master`.
+
 ## Output
 
 Everything goes to `out/<plan file name>/`, for example `out/nu6_3/` for `examples/nu6_3.toml`, or to the directory you pass with `--out`.

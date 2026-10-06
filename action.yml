@@ -1,0 +1,51 @@
+name: zrehearse
+description: Rehearse a Zcash network upgrade on a regtest Zebra node and run your project's tests against it
+inputs:
+  plan:
+    description: Path to the plan file
+    required: true
+  out:
+    description: Directory for report.json and logs
+    required: false
+    default: zrehearse-out
+outputs:
+  report:
+    description: Path to report.json
+    value: ${{ steps.run.outputs.report }}
+runs:
+  using: composite
+  steps:
+    - name: Install zrehearse
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        ACTION_REF: ${{ github.action_ref }}
+      run: |
+        set -euo pipefail
+        version=$(sed -n 's/^version = "\(.*\)"$/\1/p' "$ACTION_PATH/Cargo.toml" | head -n 1)
+        case "$RUNNER_OS-$RUNNER_ARCH" in
+          Linux-X64) target=x86_64-unknown-linux-gnu ;;
+          Linux-ARM64) target=aarch64-unknown-linux-gnu ;;
+          macOS-ARM64) target=aarch64-apple-darwin ;;
+          *) target="" ;;
+        esac
+        bin="$RUNNER_TEMP/zrehearse/bin"
+        mkdir -p "$bin"
+        url="https://github.com/RajeshRk18/zrehearse/releases/download/v$version/zrehearse-$target.tar.gz"
+        # Only a tag ref matches a release. Any other ref builds the code it points at.
+        if [[ "$ACTION_REF" == v* && -n "$target" ]] && curl -fsSL "$url" | tar -xz -C "$bin"; then
+          echo "installed zrehearse $version for $target from the release"
+        else
+          echo "building zrehearse from $ACTION_PATH (ref '$ACTION_REF', $RUNNER_OS-$RUNNER_ARCH)"
+          cargo install --locked --path "$ACTION_PATH" --root "$RUNNER_TEMP/zrehearse"
+        fi
+        echo "$bin" >> "$GITHUB_PATH"
+    - name: Rehearse
+      id: run
+      shell: bash
+      env:
+        PLAN: ${{ inputs.plan }}
+        OUT: ${{ inputs.out }}
+      run: |
+        echo "report=$OUT/report.json" >> "$GITHUB_OUTPUT"
+        zrehearse run "$PLAN" --out "$OUT"
