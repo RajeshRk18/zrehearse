@@ -1,4 +1,4 @@
-# Negative control: the node activates fine, but the project fails, so the
+# Negative control. The node activates fine, but the project fails, so the
 # whole rehearsal must fail.
 name = "failing project"
 

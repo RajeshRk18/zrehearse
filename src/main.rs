@@ -15,7 +15,7 @@ use std::process::ExitCode;
 const USAGE: &str = "\
 usage: zrehearse run <plan.toml> [--out <dir>] [--keep]
 
-  --out <dir>   where to write report.json and logs (default: out/<plan name>)
+  --out <dir>   where to write report.json and logs (default: out/<plan file name>)
   --keep        leave the zebrad container running afterwards";
 
 fn main() -> ExitCode {

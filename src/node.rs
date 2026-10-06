@@ -1,6 +1,6 @@
 //! A throwaway regtest Zebra node in Docker, and a small JSON-RPC client for it.
 //!
-//! We drive the `docker` CLI instead of the Docker API: it is already on every
+//! We drive the `docker` CLI instead of the Docker API. It is already on every
 //! machine that can run the rehearsal, and its errors are the ones users know.
 
 use anyhow::{Context, Result, bail};

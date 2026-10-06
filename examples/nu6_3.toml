@@ -9,7 +9,7 @@ name = "NU6.3"
 height = 20
 blocks_after = 5
 
-# A stand-in for a real project's test suite: it asks the node for its chain
+# A stand-in for a real project's test suite. It asks the node for its chain
 # tip branch ID and fails unless the upgrade is the one in force.
 [[project]]
 name = "rpc-smoke"

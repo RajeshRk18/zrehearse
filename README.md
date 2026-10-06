@@ -61,7 +61,7 @@ timeout_secs = 900
 | `upgrade.blocks_after` | `10` | Blocks to mine after activation, before projects run |
 | `project.name` | required | Letters, digits, `-` and `_`. It names the log file. |
 | `project.run` | required | Shell command, run with `sh -c` from the plan file's directory |
-| `project.timeout_secs` | `600` | The project fails if it runs longer |
+| `project.timeout_secs` | `600` | The project fails if it runs longer. zrehearse then stops the `sh` process, but not the processes that `sh` started. |
 
 Earlier upgrades activate at height 1 or 2, the same as Z3's regtest setup. The upgrade under test activates at your height. Later upgrades are left out of the node config, so they never activate.
 
@@ -92,7 +92,7 @@ Exit code 0 means pass. Anything else, or a timeout, means fail.
 
 ## Output
 
-Everything goes to `out/<plan name>/`, or to the directory you pass with `--out`.
+Everything goes to `out/<plan file name>/`, for example `out/nu6_3/` for `examples/nu6_3.toml`, or to the directory you pass with `--out`.
 
 - `report.json` has every check and project result.
 - `zebrad.log` holds the last 300 lines of the node's log.
