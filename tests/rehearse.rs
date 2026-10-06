@@ -94,7 +94,7 @@ fn failed_container_start_leaves_no_container() {
     let plan = format!("{dir}/plan.toml");
     std::fs::write(
         &plan,
-        format!("name = \"bad mount\"\n[node]\nimage = \"{image}\"\n[upgrade]\nname = \"NU6.3\"\nheight = 20\n"),
+        format!("name = \"bad mount\"\n[node]\nimage = \"{image}\"\n[upgrade]\nname = \"NU6.3\"\nprevious = \"NU6.2\"\nheight = 20\n"),
     )
     .unwrap();
     let (output, text) = run_zrehearse(&plan, &format!("{dir}/out"));

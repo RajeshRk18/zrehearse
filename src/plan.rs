@@ -4,23 +4,9 @@ use anyhow::{Context, Result, bail};
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
 
-/// Network upgrades in activation order, with the regtest height each one
-/// gets when it activates *before* the upgrade under rehearsal. Same heights
-/// Z3 uses for its regtest stack. A new upgrade (NU7) is one more line here,
-/// once the Zebra image under test knows its name.
-pub const UPGRADES: &[(&str, u32)] = &[
-    ("BeforeOverwinter", 1),
-    ("Overwinter", 1),
-    ("Sapling", 1),
-    ("Blossom", 1),
-    ("Heartwood", 1),
-    ("Canopy", 1),
-    ("NU5", 2),
-    ("NU6", 2),
-    ("NU6.1", 2),
-    ("NU6.2", 2),
-    ("NU6.3", 2),
-];
+/// Height where `upgrade.previous` activates. Zebra activates the upgrades
+/// before it at the same height or lower.
+const PREVIOUS_HEIGHT: u32 = 2;
 
 /// Transparent regtest address that receives block rewards. Same default as Z3.
 const DEFAULT_MINER_ADDRESS: &str = "tmSRd1r8gs77Ja67Fw1JcdoXytxsyrLTPJm";
@@ -52,6 +38,9 @@ pub struct NodeSpec {
 #[serde(deny_unknown_fields)]
 pub struct UpgradeSpec {
     pub name: String,
+    /// The upgrade active before `name`. Empty when the plan leaves it out.
+    #[serde(default)]
+    pub previous: String,
     pub height: u32,
     #[serde(default = "default_blocks_after")]
     pub blocks_after: u32,
@@ -96,13 +85,27 @@ impl Plan {
     }
 
     fn validate(&self) -> Result<()> {
-        let idx = upgrade_index(&self.upgrade.name)?;
-        // Every earlier upgrade must already be active when the target arrives.
-        let floor = UPGRADES[..idx].iter().map(|(_, h)| *h).max().unwrap_or(0);
-        if self.upgrade.height <= floor {
+        let u = &self.upgrade;
+        if u.name.is_empty() {
+            bail!("upgrade.name must not be empty");
+        }
+        if u.previous.is_empty() {
             bail!(
-                "upgrade height {} must be above {floor}, where the earlier upgrades activate",
-                self.upgrade.height
+                "plan needs upgrade.previous, the upgrade active before `{}`",
+                u.name
+            );
+        }
+        if u.previous == u.name {
+            bail!(
+                "upgrade.previous must differ from upgrade.name `{}`",
+                u.name
+            );
+        }
+        if u.height <= PREVIOUS_HEIGHT {
+            bail!(
+                "upgrade height {} must be above {PREVIOUS_HEIGHT}, where `{}` activates",
+                u.height,
+                u.previous
             );
         }
         let mut seen = std::collections::HashSet::new();
@@ -125,33 +128,19 @@ impl Plan {
         Ok(())
     }
 
-    /// The `zebrad.toml` for the rehearsal node. Upgrades before the target
-    /// activate early, the target activates at the planned height, and later
-    /// upgrades are left out so they never activate.
+    /// The `zebrad.toml` for the rehearsal node. `previous` activates early
+    /// and the target at the planned height. Zebra fills in the upgrades
+    /// before `previous`, and later upgrades are left out so they never
+    /// activate.
     pub fn zebrad_toml(&self) -> String {
-        let idx = upgrade_index(&self.upgrade.name).expect("validated in load");
-        let mut out = String::from(
-            "[network]\nnetwork = \"Regtest\"\n\n[network.testnet_parameters.activation_heights]\n",
-        );
-        for (name, height) in &UPGRADES[..idx] {
-            out.push_str(&format!("\"{name}\" = {height}\n"));
-        }
-        out.push_str(&format!(
-            "\"{}\" = {}\n",
-            self.upgrade.name, self.upgrade.height
-        ));
-        out
+        let key = |name: &str| toml::Value::String(name.to_string()).to_string();
+        format!(
+            "[network]\nnetwork = \"Regtest\"\n\n[network.testnet_parameters.activation_heights]\n{} = {PREVIOUS_HEIGHT}\n{} = {}\n",
+            key(&self.upgrade.previous),
+            key(&self.upgrade.name),
+            self.upgrade.height
+        )
     }
-}
-
-fn upgrade_index(name: &str) -> Result<usize> {
-    UPGRADES
-        .iter()
-        .position(|(n, _)| *n == name)
-        .with_context(|| {
-            let known: Vec<_> = UPGRADES.iter().map(|(n, _)| *n).collect();
-            format!("unknown upgrade {name:?}; known: {}", known.join(", "))
-        })
 }
 
 #[cfg(test)]
@@ -167,53 +156,66 @@ mod tests {
 
     const NODE: &str = "[node]\nimage = \"zfnd/zebra:6.2.3\"\n";
 
-    #[test]
-    fn zebrad_toml_stops_at_the_target_upgrade() {
-        let p = plan(&format!(
-            "name = \"t\"\n{NODE}[upgrade]\nname = \"NU6.1\"\nheight = 20\n"
-        ))
-        .unwrap();
-        let cfg = p.zebrad_toml();
-        assert!(cfg.contains("\"NU6\" = 2\n"));
-        assert!(cfg.contains("\"NU6.1\" = 20\n"));
-        assert!(
-            !cfg.contains("NU6.2"),
-            "later upgrades must not activate:\n{cfg}"
-        );
-        assert!(cfg.contains("network = \"Regtest\""));
+    fn with_upgrade(upgrade: &str) -> Result<Plan> {
+        plan(&format!("name = \"t\"\n{NODE}[upgrade]\n{upgrade}"))
     }
 
     #[test]
-    fn rejects_unknown_upgrade_and_low_height() {
-        let unknown = plan(&format!(
-            "name = \"t\"\n{NODE}[upgrade]\nname = \"NU9\"\nheight = 20\n"
-        ));
-        assert!(unknown.unwrap_err().to_string().contains("unknown upgrade"));
-        let low = plan(&format!(
-            "name = \"t\"\n{NODE}[upgrade]\nname = \"NU6.3\"\nheight = 2\n"
-        ));
-        assert!(low.unwrap_err().to_string().contains("must be above 2"));
+    fn zebrad_toml_sets_only_previous_and_target() {
+        let p = with_upgrade("name = \"NU6.3\"\nprevious = \"NU6.2\"\nheight = 20\n").unwrap();
+        assert_eq!(
+            p.zebrad_toml(),
+            "[network]\nnetwork = \"Regtest\"\n\n[network.testnet_parameters.activation_heights]\n\
+             \"NU6.2\" = 2\n\"NU6.3\" = 20\n"
+        );
+    }
+
+    #[test]
+    fn zebrad_toml_escapes_names() {
+        let p = with_upgrade("name = 'a\"b'\nprevious = \"NU6.2\"\nheight = 20\n").unwrap();
+        let cfg: toml::Table = toml::from_str(&p.zebrad_toml()).unwrap();
+        let heights = &cfg["network"]["testnet_parameters"]["activation_heights"];
+        assert_eq!(heights["a\"b"].as_integer(), Some(20));
+    }
+
+    #[test]
+    fn rejects_bad_upgrades() {
+        let err = |u: &str| with_upgrade(u).unwrap_err().to_string();
+        assert_eq!(
+            err("name = \"NU6.3\"\nheight = 20\n"),
+            "plan needs upgrade.previous, the upgrade active before `NU6.3`"
+        );
+        assert!(
+            err("name = \"NU6.3\"\nprevious = \"NU6.3\"\nheight = 20\n").contains("must differ")
+        );
+        assert!(
+            err("name = \"\"\nprevious = \"NU6.2\"\nheight = 20\n").contains("must not be empty")
+        );
+        assert!(
+            err("name = \"NU6.3\"\nprevious = \"NU6.2\"\nheight = 2\n").contains("must be above 2")
+        );
+        assert!(with_upgrade("name = \"NU6.3\"\nprevious = \"NU6.2\"\nheight = 3\n").is_ok());
     }
 
     #[test]
     fn rejects_duplicate_and_unsafe_project_names() {
+        let upgrade = "name = \"NU6.3\"\nprevious = \"NU6.2\"\nheight = 5\n";
         let dup = format!(
-            "name = \"t\"\n{NODE}[upgrade]\nname = \"NU6.3\"\nheight = 5\n\
-             [[project]]\nname = \"a\"\nrun = \"true\"\n[[project]]\nname = \"a\"\nrun = \"true\"\n"
+            "{upgrade}[[project]]\nname = \"a\"\nrun = \"true\"\n[[project]]\nname = \"a\"\nrun = \"true\"\n"
         );
-        assert!(plan(&dup).unwrap_err().to_string().contains("used twice"));
-        let unsafe_name = format!(
-            "name = \"t\"\n{NODE}[upgrade]\nname = \"NU6.3\"\nheight = 5\n[[project]]\nname = \"../x\"\nrun = \"true\"\n"
+        assert!(
+            with_upgrade(&dup)
+                .unwrap_err()
+                .to_string()
+                .contains("used twice")
         );
-        assert!(plan(&unsafe_name).is_err());
+        let unsafe_name = format!("{upgrade}[[project]]\nname = \"../x\"\nrun = \"true\"\n");
+        assert!(with_upgrade(&unsafe_name).is_err());
     }
 
     #[test]
     fn defaults_fill_in() {
-        let p = plan(&format!(
-            "name = \"t\"\n{NODE}[upgrade]\nname = \"NU6.3\"\nheight = 5\n"
-        ))
-        .unwrap();
+        let p = with_upgrade("name = \"NU6.3\"\nprevious = \"NU6.2\"\nheight = 5\n").unwrap();
         assert_eq!(p.upgrade.blocks_after, 10);
         assert_eq!(p.node.miner_address, DEFAULT_MINER_ADDRESS);
         assert!(p.projects.is_empty());

@@ -7,6 +7,7 @@ image = "zfnd/zebra:6.2.3"
 
 [upgrade]
 name = "NU6.3"
+previous = "NU6.2"
 height = 10
 blocks_after = 2
 

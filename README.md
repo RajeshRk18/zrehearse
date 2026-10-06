@@ -41,6 +41,7 @@ image = "zfnd/zebra:6.2.3"
 
 [upgrade]
 name = "NU6.3"
+previous = "NU6.2"
 height = 20
 blocks_after = 5
 
@@ -53,17 +54,18 @@ timeout_secs = 900
 | Field | Default | Meaning |
 |---|---|---|
 | `name` | required | Free text, copied into the report |
-| `node.image` | required | Zebra image to run. The image must know the upgrade's name. |
+| `node.image` | required | Zebra image to run. The image must know both upgrade names. |
 | `node.miner_address` | `tmSRd1r8gs77Ja67Fw1JcdoXytxsyrLTPJm` | Regtest address that receives block rewards (the same one Z3 uses) |
 | `node.ready_timeout_secs` | `120` | How long to wait for zebrad's RPC to answer |
-| `upgrade.name` | required | One of `BeforeOverwinter` through `NU6.3` |
-| `upgrade.height` | required | Activation height. It must be above the height where the earlier upgrades activate, so 3 or more for NU5 and later. |
+| `upgrade.name` | required | The upgrade under test, as Zebra names it, for example `NU6.3`. NU5 and later are supported. |
+| `upgrade.previous` | required | The upgrade active before it, for example `NU6.2` |
+| `upgrade.height` | required | Activation height, 3 or more |
 | `upgrade.blocks_after` | `10` | Blocks to mine after activation, before projects run |
 | `project.name` | required | Letters, digits, `-` and `_`. It names the log file. |
 | `project.run` | required | Shell command, run with `sh -c` from the plan file's directory |
 | `project.timeout_secs` | `600` | The project fails if it runs longer. zrehearse then stops the `sh` process, but not the processes that `sh` started. |
 
-Earlier upgrades activate at height 1 or 2, the same as Z3's regtest setup. The upgrade under test activates at your height. Later upgrades are left out of the node config, so they never activate.
+The node config sets only two heights. `previous` activates at height 2, and the upgrade under test activates at your height. Zebra activates the upgrades before `previous` at height 2 or lower. Later upgrades are left out, so they never activate. zrehearse has no list of upgrades. Zebra checks the names and their order.
 
 ## What gets checked
 
@@ -109,9 +111,9 @@ An interactive version is in `docs/architecture.html`.
 
 zrehearse calls the `docker` CLI rather than the Docker API, because every machine that can run the rehearsal already has it. The container is removed when the run ends, including when it fails. Each container carries the label `zrehearse`, so if you interrupt a run with Ctrl-C you can clean up with `docker rm -f $(docker ps -aq --filter label=zrehearse)`. Pass `--keep` to leave the node running for inspection.
 
-## Adding the next upgrade
+## Rehearsing a new upgrade
 
-The upgrade order is the `UPGRADES` table in `src/plan.rs`. When a Zebra release knows NU7, add one line after `NU6.3` and point a plan at that image.
+A new upgrade needs no change to zrehearse. Point a plan at a Zebra image that knows the upgrade, and set `name` and `previous`.
 
 ## Not built yet
 
