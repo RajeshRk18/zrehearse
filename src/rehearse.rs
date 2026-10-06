@@ -63,18 +63,18 @@ pub fn run(plan: &Plan, out: &Path, keep: bool) -> Result<Report> {
     };
 
     let node = Node::start(&plan.node.image, &config, &plan.node.miner_address, keep)?;
-    let env_ok = activation_checks(plan, &node, &mut report);
-    if let Err(e) = &env_ok {
+    let activated = activation_checks(plan, &node, &mut report);
+    if let Err(e) = &activated {
         report.checks.push(Check {
             name: "rehearsal setup".into(),
             passed: false,
             detail: format!("{e:#}"),
         });
     }
-    let env_ok = env_ok.is_ok() && report.checks.iter().all(|c| c.passed);
+    let activated = activated.is_ok() && report.checks.iter().all(|c| c.passed);
 
     for project in &plan.projects {
-        let result = if env_ok {
+        let result = if activated {
             run_project(project, plan, &node, &report, out)
         } else {
             // The chain never reached the planned state, so a project result
@@ -94,7 +94,7 @@ pub fn run(plan: &Plan, out: &Path, keep: bool) -> Result<Report> {
     }
 
     write(&out.join("zebrad.log"), node.logs())?;
-    report.passed = env_ok && report.projects.iter().all(|p| p.passed);
+    report.passed = activated && report.projects.iter().all(|p| p.passed);
     write(
         &out.join("report.json"),
         serde_json::to_string_pretty(&report)? + "\n",

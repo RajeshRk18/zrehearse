@@ -13,7 +13,7 @@ use std::time::{Duration, Instant};
 const RPC_PORT: u16 = 18232;
 /// Label on every container we start, so leftovers are easy to find:
 /// `docker ps -a --filter label=zrehearse`.
-pub const LABEL: &str = "zrehearse";
+const LABEL: &str = "zrehearse";
 
 pub struct Node {
     container: String,
