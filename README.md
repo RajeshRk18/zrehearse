@@ -6,7 +6,7 @@ Network upgrade rehearsals for downstream Zcash projects.
 
 A Zcash network upgrade changes the consensus rules at a fixed block height ([ZIP 200](https://zips.z.cash/zip-0200)). Each upgrade has its own consensus branch ID, and transaction signatures commit to it. Wallets, SDKs and light servers that build transactions or serve blocks must follow the new rules from the activation height onward. If they do not, they break when the upgrade activates.
 
-zrehearse moves that moment to your CI. It starts a throwaway regtest Zebra node with one upgrade set to activate at a height you pick. It mines across that height and checks that the upgrade really took effect. Then it runs your own test command against the node and reports pass or fail.
+**zrehearse moves that moment to your CI.** It starts a throwaway regtest Zebra node with one upgrade set to activate at a height you pick. It mines across that height and checks that the upgrade really took effect. Then it runs your own test command against the node and reports pass or fail.
 
 ## Quick start
 
@@ -35,6 +35,28 @@ REHEARSAL PASSED  report: out/nu6_3/report.json
 `examples/nu7.toml` rehearses NU7 on `zfnd/zebra:7.0.0-rc.0`, the first Zebra image that knows NU7.
 
 `examples/failing_project.toml` is the negative control. The node activates the upgrade fine, but its project exits with code 3, so the whole run fails.
+
+## Usage
+
+Install the CLI with cargo. You need Docker on the machine that runs it.
+
+```sh
+cargo install --locked --git https://github.com/RajeshRk18/zrehearse
+```
+
+```
+zrehearse run <plan.toml> [--out <dir>] [--keep]
+zrehearse --version
+zrehearse --help
+```
+
+| Argument | Meaning |
+|---|---|
+| `<plan.toml>` | The plan file, described below |
+| `--out <dir>` | Where to write `report.json` and the logs. The default is `out/<plan file name>/`. |
+| `--keep` | Leave the zebrad container running after the run. zrehearse prints its name and RPC URL. |
+
+zrehearse calls the `docker` CLI rather than the Docker API, because every machine that can run the rehearsal already has it. The container is removed when the run ends, including when it fails. Each container carries the label `zrehearse`. If you interrupt a run with Ctrl-C, clean up with `docker rm -f $(docker ps -aq --filter label=zrehearse)`.
 
 ## The plan file
 
@@ -90,7 +112,7 @@ The project command runs with these environment variables.
 |---|---|
 | `ZREHEARSE_RPC_URL` | `http://127.0.0.1:32768` (zebrad JSON-RPC, no auth) |
 | `ZREHEARSE_UPGRADE` | `NU6.3` |
-| `ZREHEARSE_ACTIVATION_HEIGHT` | `20` |
+| `ZREHEARSE_ACTIVATION_HEIGHT` | `110` |
 | `ZREHEARSE_BRANCH_ID` | `37a5165b`, as zebrad reports it |
 | `ZREHEARSE_PREVIOUS_UPGRADE` | `NU6.2` |
 | `ZREHEARSE_PREVIOUS_BRANCH_ID` | `5437f330`, as zebrad reports it |
@@ -138,7 +160,6 @@ The process exits with 0 when the rehearsal passed and 1 when a check or project
 
 An interactive version is in `docs/architecture.html`.
 
-zrehearse calls the `docker` CLI rather than the Docker API, because every machine that can run the rehearsal already has it. The container is removed when the run ends, including when it fails. Each container carries the label `zrehearse`, so if you interrupt a run with Ctrl-C you can clean up with `docker rm -f $(docker ps -aq --filter label=zrehearse)`. Pass `--keep` to leave the node running for inspection.
 
 ## Rehearsing a new upgrade
 
@@ -153,7 +174,7 @@ A new upgrade needs no change to zrehearse. Point a plan at a Zebra image that k
 
 ## Development
 
-The tests in `tests/rehearse.rs` run real rehearsals, so they need Docker and the Zebra image. They rehearse both examples, a misspelled upgrade, an upgrade the image does not know and a container that fails to start.
+The tests in `tests/rehearse.rs` run real rehearsals, so they need Docker and the Zebra images `zfnd/zebra:6.2.3` and `zfnd/zebra:7.0.0-rc.0`. They rehearse both examples, a misspelled upgrade, an upgrade the image does not know and a container that fails to start.
 
 ```sh
 cargo fmt --check
