@@ -119,11 +119,13 @@ fn activation_checks(plan: &Plan, node: &Node, report: &mut Report) -> Result<()
     check(
         report,
         "pending one block before activation",
-        upgrade["status"] == "pending" && upgrade["activationheight"] == height && next == branch,
+        info["blocks"] == height - 1
+            && upgrade["status"] == "pending"
+            && upgrade["activationheight"] == height
+            && next == branch,
         format!(
             "tip {}, status {}, nextblock {next}, expected branch {branch}",
-            height - 1,
-            upgrade["status"]
+            info["blocks"], upgrade["status"]
         ),
     );
 
@@ -134,10 +136,13 @@ fn activation_checks(plan: &Plan, node: &Node, report: &mut Report) -> Result<()
     check(
         report,
         "active at the activation height",
-        upgrade["status"] == "active" && tip_branch == branch,
+        info["blocks"] == height
+            && upgrade["status"] == "active"
+            && upgrade["activationheight"] == height
+            && tip_branch == branch,
         format!(
-            "tip {height}, status {}, chaintip {tip_branch}",
-            upgrade["status"]
+            "tip {}, status {}, chaintip {tip_branch}",
+            info["blocks"], upgrade["status"]
         ),
     );
 
