@@ -35,6 +35,9 @@ jobs:
 
   action:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        image: ["zfnd/zebra:6.2.3", "zfnd/zebra:7.0.0-rc.0"]
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -43,7 +46,8 @@ jobs:
         id: zrehearse
         uses: ./
         with:
-          plan: examples/nu7.toml
+          plan: examples/nu6_3.toml
+          image: ${{ matrix.image }}
       - name: Report says passed
         env:
           REPORT: ${{ steps.zrehearse.outputs.report }}

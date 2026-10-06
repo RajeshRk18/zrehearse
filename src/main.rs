@@ -14,8 +14,9 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 
 const USAGE: &str = "\
-usage: zrehearse run <plan.toml> [--out <dir>] [--keep]
+usage: zrehearse run <plan.toml> [--image <ref>] [--out <dir>] [--keep]
 
+  --image <ref> Zebra image to run instead of node.image in the plan
   --out <dir>   where to write report.json and logs (default: out/<plan file name>)
   --keep        leave the zebrad container running afterwards";
 
@@ -46,11 +47,18 @@ fn real_main() -> Result<bool> {
         _ => bail!("{USAGE}"),
     }
 
-    let (mut plan_path, mut out, mut keep) = (None, None, false);
+    let (mut plan_path, mut out, mut image, mut keep) = (None, None, None, false);
     let mut rest = args[1..].iter();
     while let Some(arg) = rest.next() {
         match arg.as_str() {
             "--keep" => keep = true,
+            "--image" => {
+                image = Some(
+                    rest.next()
+                        .ok_or_else(|| anyhow::anyhow!("--image needs an image reference"))?
+                        .clone(),
+                )
+            }
             "--out" => {
                 out = Some(PathBuf::from(
                     rest.next()
@@ -63,7 +71,10 @@ fn real_main() -> Result<bool> {
         }
     }
     let plan_path = plan_path.ok_or_else(|| anyhow::anyhow!("{USAGE}"))?;
-    let plan = plan::Plan::load(&plan_path)?;
+    let mut plan = plan::Plan::load(&plan_path)?;
+    if let Some(image) = image {
+        plan.node.image = image;
+    }
     let out = out.unwrap_or_else(|| {
         let stem = plan_path
             .file_stem()

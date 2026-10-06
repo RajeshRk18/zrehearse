@@ -45,7 +45,7 @@ cargo install --locked --git https://github.com/RajeshRk18/zrehearse
 ```
 
 ```
-zrehearse run <plan.toml> [--out <dir>] [--keep]
+zrehearse run <plan.toml> [--image <ref>] [--out <dir>] [--keep]
 zrehearse --version
 zrehearse --help
 ```
@@ -53,6 +53,7 @@ zrehearse --help
 | Argument | Meaning |
 |---|---|
 | `<plan.toml>` | The plan file, described below |
+| `--image <ref>` | Zebra image to run instead of `node.image` in the plan |
 | `--out <dir>` | Where to write `report.json` and the logs. The default is `out/<plan file name>/`. |
 | `--keep` | Leave the zebrad container running after the run. zrehearse prints its name and RPC URL. |
 
@@ -139,7 +140,36 @@ jobs:
           plan: zrehearse/nu7.toml
 ```
 
-The action needs a Linux runner, because GitHub's macOS runners have no Docker. `out` sets the output directory (default `zrehearse-out`), and the `report` output gives the path to `report.json`. With a release tag such as `@v0`, the action downloads the release binary. With any other ref, it builds zrehearse from that ref.
+The action needs a Linux runner, because GitHub's macOS runners have no Docker. `image` replaces `node.image` in the plan. `out` sets the output directory (default `zrehearse-out`), and the `report` output gives the path to `report.json`. With a release tag such as `@v0`, the action downloads the release binary. With any other ref, it builds zrehearse from that ref.
+
+## Version matrix
+
+To rehearse one plan on more than one Zebra version, run it once for each image. In GitHub Actions, use a matrix.
+
+```yaml
+jobs:
+  rehearse:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        image: ["zfnd/zebra:6.2.3", "zfnd/zebra:7.0.0-rc.0"]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: RajeshRk18/zrehearse@v0
+        with:
+          plan: zrehearse/nu6_3.toml
+          image: ${{ matrix.image }}
+```
+
+On your machine, use a loop.
+
+```sh
+for image in zfnd/zebra:6.2.3 zfnd/zebra:7.0.0-rc.0; do
+  zrehearse run zrehearse/nu6_3.toml --image "$image" --out "out/${image##*:}"
+done
+```
+
+Each image must know both upgrade names in the plan.
 
 ## Output
 
@@ -168,7 +198,7 @@ A new upgrade needs no change to zrehearse. Point a plan at a Zebra image that k
 
 ## Development
 
-The tests in `tests/rehearse.rs` run real rehearsals, so they need Docker and the Zebra images `zfnd/zebra:6.2.3` and `zfnd/zebra:7.0.0-rc.0`. They rehearse both examples, a misspelled upgrade, an upgrade the image does not know and a container that fails to start.
+The tests in `tests/rehearse.rs` run real rehearsals, so they need Docker and the Zebra images `zfnd/zebra:6.2.3` and `zfnd/zebra:7.0.0-rc.0`. They rehearse both examples, the NU6.3 example on a second image, a misspelled upgrade, an upgrade the image does not know and a container that fails to start.
 
 ```sh
 cargo fmt --check

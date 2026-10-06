@@ -4,6 +4,10 @@ inputs:
   plan:
     description: Path to the plan file
     required: true
+  image:
+    description: Zebra image to run instead of node.image in the plan
+    required: false
+    default: ""
   out:
     description: Directory for report.json and logs
     required: false
@@ -45,7 +49,10 @@ runs:
       shell: bash
       env:
         PLAN: ${{ inputs.plan }}
+        IMAGE: ${{ inputs.image }}
         OUT: ${{ inputs.out }}
       run: |
         echo "report=$OUT/report.json" >> "$GITHUB_OUTPUT"
-        zrehearse run "$PLAN" --out "$OUT"
+        args=(run "$PLAN" --out "$OUT")
+        if [[ -n "$IMAGE" ]]; then args+=(--image "$IMAGE"); fi
+        zrehearse "${args[@]}"

@@ -12,9 +12,14 @@ struct Run {
 
 /// Runs `zrehearse run <plan> --out <out>` and checks that it left no container behind.
 fn run_zrehearse(plan: &str, out: &str) -> (Output, String) {
+    run_zrehearse_with(plan, out, &[])
+}
+
+fn run_zrehearse_with(plan: &str, out: &str, extra: &[&str]) -> (Output, String) {
     let _ = std::fs::remove_dir_all(out);
     let child = Command::new(env!("CARGO_BIN_EXE_zrehearse"))
         .args(["run", plan, "--out", out])
+        .args(extra)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
@@ -79,6 +84,24 @@ fn nu7_rehearsal_passes() {
     assert_eq!(run.report["projects"][0]["passed"], true);
     assert_eq!(run.report["projects"][1]["name"], "spend");
     assert_eq!(run.report["projects"][1]["passed"], true);
+}
+
+#[test]
+#[ignore = "needs Docker and zfnd/zebra:7.0.0-rc.0"]
+fn image_flag_replaces_the_plan_image() {
+    let root = env!("CARGO_MANIFEST_DIR");
+    let out = format!("{root}/out/e2e-image");
+    let (output, text) = run_zrehearse_with(
+        &format!("{root}/examples/nu6_3.toml"),
+        &out,
+        &["--image", "zfnd/zebra:7.0.0-rc.0"],
+    );
+    assert!(output.status.success(), "{text}");
+    let report: Value =
+        serde_json::from_str(&std::fs::read_to_string(format!("{out}/report.json")).unwrap())
+            .unwrap();
+    assert_eq!(report["image"], "zfnd/zebra:7.0.0-rc.0");
+    assert_eq!(report["branch_id"], "37a5165b");
 }
 
 #[test]
