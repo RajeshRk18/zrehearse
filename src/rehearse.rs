@@ -204,7 +204,19 @@ pub fn run(plan: &Plan, out: &Path, keep: bool) -> Result<Report> {
 
 /// Writes the container's log to `path` and describes the container.
 fn container_report(container: &Container, path: &Path, passed: bool) -> Result<ContainerReport> {
-    let log = container.logs();
+    let mut log = container.logs();
+    if !passed {
+        // `docker logs` can lag behind the container's output, and the cause
+        // of a failure is often in the last lines. Read until it is stable.
+        for _ in 0..8 {
+            std::thread::sleep(Duration::from_millis(250));
+            let again = container.logs();
+            if again == log {
+                break;
+            }
+            log = again;
+        }
+    }
     write(path, &log)?;
     let (state, exit_code) = container.status()?;
     Ok(ContainerReport {
