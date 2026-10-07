@@ -70,10 +70,7 @@ impl LightServer {
         let port = port(spec.kind);
         let container = match spec.kind {
             LightServerKind::Lightwalletd => {
-                let args = [
-                    "--network",
-                    &network,
-                    &spec.image,
+                let server = [
                     "--no-tls-very-insecure",
                     "--grpc-bind-addr",
                     &format!("0.0.0.0:{port}"),
@@ -92,7 +89,8 @@ impl LightServer {
                     "--log-file",
                     "/dev/stdout",
                 ];
-                Container::run(&name, &with_extras(&args, spec), keep)
+                let args = with_extras(&["--network", &network], &server, spec);
+                Container::run(&name, &args, keep)
             }
             LightServerKind::Zaino => {
                 // zainod needs a config file. The rest comes from ZAINO_* env.
@@ -100,8 +98,11 @@ impl LightServer {
                 let mut zainod =
                     toml::Table::from_iter([("network".to_string(), "Regtest".into())]);
                 crate::plan::merge(&mut zainod, &spec.config);
-                std::fs::write(&config, toml::to_string(&zainod)?)
-                    .with_context(|| format!("writing {}", config.display()))?;
+                std::fs::write(
+                    &config,
+                    toml::to_string(&zainod).context("serializing zainod.toml")?,
+                )
+                .with_context(|| format!("writing {}", config.display()))?;
                 let config = std::fs::canonicalize(&config)
                     .with_context(|| format!("resolving {}", config.display()))?;
                 let args = [
@@ -113,9 +114,8 @@ impl LightServer {
                     &format!("ZAINO_VALIDATOR_SETTINGS__VALIDATOR_JSONRPC_LISTEN_ADDRESS={rpc}"),
                     "-e",
                     &format!("ZAINO_GRPC_SETTINGS__LISTEN_ADDRESS=0.0.0.0:{port}"),
-                    &spec.image,
                 ];
-                Container::run(&name, &with_extras(&args, spec), keep)
+                Container::run(&name, &with_extras(&args, &[], spec), keep)
             }
         };
         let mut container = container.with_context(|| format!("starting {}", spec.image))?;
@@ -198,18 +198,13 @@ impl LightServer {
     }
 }
 
-/// Puts `spec.env` before the image and `spec.args` after the existing
-/// arguments, which end with the image or with the light server's own flags.
-fn with_extras<'a>(args: &[&'a str], spec: &'a LightServerSpec) -> Vec<String> {
-    let image = args
-        .iter()
-        .position(|a| *a == spec.image)
-        .expect("args hold the image");
-    let mut out: Vec<String> = args[..image].iter().map(|a| a.to_string()).collect();
-    for (k, v) in &spec.env {
-        out.extend(["-e".to_string(), format!("{k}={v}")]);
-    }
-    out.extend(args[image..].iter().map(|a| a.to_string()));
+/// The `docker run` arguments `docker`, `spec.env`, the image, `server` and
+/// `spec.args`.
+fn with_extras(docker: &[&str], server: &[&str], spec: &LightServerSpec) -> Vec<String> {
+    let mut out: Vec<String> = docker.iter().map(|a| a.to_string()).collect();
+    out.extend(crate::docker::env_args(&spec.env));
+    out.push(spec.image.clone());
+    out.extend(server.iter().map(|a| a.to_string()));
     out.extend(spec.args.iter().cloned());
     out
 }

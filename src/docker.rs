@@ -129,6 +129,13 @@ fn remove(container: &str) {
     }
 }
 
+/// `-e NAME=value` pairs for `docker run`.
+pub fn env_args(env: &std::collections::BTreeMap<String, String>) -> Vec<String> {
+    env.iter()
+        .flat_map(|(k, v)| ["-e".to_string(), format!("{k}={v}")])
+        .collect()
+}
+
 pub fn docker(args: &[&str]) -> Result<String> {
     let out = Command::new("docker")
         .args(args)

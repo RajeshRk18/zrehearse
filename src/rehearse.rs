@@ -480,7 +480,7 @@ fn light_server_checks(
                         .map(|tx| {
                             ["outputs", "actions", "ironwoodActions"]
                                 .iter()
-                                .map(|f| tx[*f].as_array().map_or(0, Vec::len))
+                                .map(|f| array_len(&tx[*f]))
                                 .sum::<usize>()
                         })
                         .sum()
@@ -531,7 +531,7 @@ fn light_server_checks(
                 .with_context(|| format!("GetSubtreeRoots returned {out:?}"))?
                 .len();
             let want = node.rpc("z_getsubtreesbyindex", json!([pool, 0]))?;
-            let want = want["subtrees"].as_array().map_or(0, Vec::len);
+            let want = array_len(&want["subtrees"]);
             same &= got == want;
             detail.push(format!("{pool} {got} of {want}"));
         }
@@ -579,15 +579,19 @@ fn mine(node: &Node, report: &mut Report, n: u32) -> Result<()> {
     }
 }
 
+/// The length of a JSON array, 0 for anything else.
+fn array_len(v: &Value) -> usize {
+    v.as_array().map_or(0, Vec::len)
+}
+
 /// The shielded pools that a block's coinbase pays, with output counts, from
 /// `getblock <h> 2`. For example `["ironwood 1"]`.
 fn coinbase_pools(block: &Value) -> Vec<String> {
     let tx = &block["tx"][0];
-    let count = |v: &Value| v.as_array().map_or(0, Vec::len);
     [
-        ("sapling", count(&tx["vShieldedOutput"])),
-        ("orchard", count(&tx["orchard"]["actions"])),
-        ("ironwood", count(&tx["ironwood"]["actions"])),
+        ("sapling", array_len(&tx["vShieldedOutput"])),
+        ("orchard", array_len(&tx["orchard"]["actions"])),
+        ("ironwood", array_len(&tx["ironwood"]["actions"])),
     ]
     .into_iter()
     .filter(|(_, n)| *n > 0)

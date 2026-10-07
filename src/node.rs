@@ -50,9 +50,9 @@ impl Node {
             .chain(extra_ports)
             .map(|p| format!("127.0.0.1::{p}"))
             .collect();
-        let env: Vec<String> = env.iter().map(|(k, v)| format!("{k}={v}")).collect();
+        let env = crate::docker::env_args(env);
         let mut args: Vec<&str> = ports.iter().flat_map(|p| ["-p", p.as_str()]).collect();
-        args.extend(env.iter().flat_map(|e| ["-e", e.as_str()]));
+        args.extend(env.iter().map(String::as_str));
         let rpc_listen = format!("ZEBRA_RPC__LISTEN_ADDR=0.0.0.0:{RPC_PORT}");
         let miner = format!("ZEBRA_MINING__MINER_ADDRESS={miner_address}");
         args.extend([
