@@ -156,12 +156,7 @@ impl Plan {
 
     fn validate(&self) -> Result<()> {
         reject_owned_keys("node.config", &self.node.config, NODE_CONFIG_KEYS)?;
-        reject_owned_env(
-            "node.env",
-            &self.node.env,
-            &["zebra_", "zakura_"],
-            NODE_CONFIG_KEYS,
-        )?;
+        reject_owned_env("node.env", &self.node.env, NODE_CONFIG_KEYS)?;
         if let Some(ls) = &self.light_server {
             if !ls.config.is_empty() && matches!(ls.kind, LightServerKind::Lightwalletd) {
                 bail!(
@@ -169,7 +164,7 @@ impl Plan {
                 );
             }
             reject_owned_keys("light_server.config", &ls.config, ZAINO_CONFIG_KEYS)?;
-            reject_owned_env("light_server.env", &ls.env, &["zaino_"], ZAINO_CONFIG_KEYS)?;
+            reject_owned_env("light_server.env", &ls.env, ZAINO_CONFIG_KEYS)?;
             if let Some(arg) = ls.args.iter().find(|a| {
                 LIGHTWALLETD_FLAGS
                     .iter()
@@ -298,24 +293,16 @@ fn reject_owned_keys(field: &str, table: &toml::Table, owned: &[&[&str]]) -> Res
     Ok(())
 }
 
-/// Rejects an env var that sets an owned key or a table around one. The
-/// nodes read `ZEBRA_RPC__LISTEN_ADDR` as `rpc.listen_addr`.
-fn reject_owned_env(
-    field: &str,
-    env: &BTreeMap<String, String>,
-    prefixes: &[&str],
-    owned: &[&[&str]],
-) -> Result<()> {
+/// Rejects an env var that sets an owned key or a key inside one. The nodes
+/// read `ZEBRA_RPC__LISTEN_ADDR` as `rpc.listen_addr`. Any prefix matches, so
+/// a fork with its own prefix is covered too.
+fn reject_owned_env(field: &str, env: &BTreeMap<String, String>, owned: &[&[&str]]) -> Result<()> {
     for name in env.keys() {
         let lower = name.to_ascii_lowercase();
-        let Some(path) = prefixes.iter().find_map(|p| lower.strip_prefix(p)) else {
-            continue;
-        };
-        let path: Vec<&str> = path.split("__").collect();
-        if owned
-            .iter()
-            .any(|o| o.iter().zip(&path).all(|(a, b)| a == b))
-        {
+        if owned.iter().any(|o| {
+            let key = format!("_{}", o.join("__"));
+            lower.ends_with(&key) || lower.contains(&format!("{key}__"))
+        }) {
             bail!("{field} sets {name}, which zrehearse owns");
         }
     }
@@ -475,6 +462,7 @@ mod tests {
             "ZAKURA_RPC__LISTEN_ADDR",
             "ZEBRA_NETWORK__NETWORK",
             "ZEBRA_NETWORK__TESTNET_PARAMETERS__ACTIVATION_HEIGHTS__NU7",
+            "FORK_MINING__MINER_ADDRESS",
         ] {
             assert!(err(&format!("[node.env]\n{var} = \"x\"\n")).contains(var));
         }
