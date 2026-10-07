@@ -23,6 +23,7 @@ zrehearse drives Zebra, lightwalletd, Zaino and grpcurl through their images, fl
 | Zakura | Reads the config at Zebra's path `/home/zebra/.config/zebrad.toml` (it warns that the name is deprecated) and maps the legacy `ZEBRA_*` env vars to `ZAKURA_*` | Medium. A later release can drop the old path or the env var mapping. Then zrehearse needs a config path setting. | `src/node.rs` |
 | Zebra | Coinbase maturity of 100 blocks | Low. It is a consensus rule. | `src/plan.rs` |
 | lightwallet-protocol | Method names and the fields zrehearse reads (`blockHeight`, `consensusBranchId`, `hash`, `saplingTree`, `orchardTree`) | Low. New fields do not break zrehearse. | `src/lightserver.rs`, `src/rehearse.rs` |
+| zcash-devtool | Commit 399fb4e of branch `list-unspent-ironwood`, the `wallet` subcommands `restore-mnemonic`, `sync`, `balance --json` and `send`, and the `--activation-heights` keys | High. The branch is not released, and it cannot send on NU7 yet. | `examples/shielded-wallet.sh` |
 | Zcash consensus | A v5 transaction stays valid after the upgrade | Low. Only `examples/spend.rs` depends on it. A future upgrade that rejects v5 needs a v6 builder there. | `examples/spend.rs` |
 
 ## How a break shows

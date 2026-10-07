@@ -304,3 +304,25 @@ fn zakura_without_lockbox_names_the_cause() {
         "{errors:?}"
     );
 }
+
+#[test]
+#[ignore = "needs Docker, zfnd/zebra:6.2.3, electriccoinco/lightwalletd:v0.5.4 and zcash-devtool on PATH"]
+fn shielded_sync_sees_both_pools() {
+    let run = rehearse("examples/shielded_sync.toml", "out/e2e-shielded-sync");
+    assert!(run.output.status.success(), "{}", run.stdout);
+    let shielded = check(&run.report, "shielded rewards cross the boundary");
+    assert_eq!(shielded["detail"], "109 orchard 1, 110 ironwood 1");
+    assert_eq!(run.report["projects"][0]["name"], "shielded-sync");
+    assert_eq!(run.report["projects"][0]["passed"], true);
+}
+
+#[test]
+#[ignore = "needs Docker, zfnd/zebra:6.2.3, electriccoinco/lightwalletd:v0.5.4 and zcash-devtool on PATH"]
+fn shielded_wallet_spends_across_the_boundary() {
+    let run = rehearse("examples/shielded_wallet.toml", "out/e2e-shielded-wallet");
+    assert!(run.output.status.success(), "{}", run.stdout);
+    let shielded = check(&run.report, "shielded rewards cross the boundary");
+    assert_eq!(shielded["detail"], "109 orchard 1, 110 ironwood 1");
+    assert_eq!(run.report["projects"][0]["name"], "shielded-wallet");
+    assert_eq!(run.report["projects"][0]["passed"], true);
+}

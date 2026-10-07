@@ -32,6 +32,8 @@ section "Limits".
   `fullstorydev/grpcurl:v1.9.3`. The light server images are amd64 only.
   Docker runs them on arm64 hosts with emulation.
 - The Rust toolchain must support edition 2024.
+- The shielded wallet tests need `zcash-devtool` on `PATH`, installed as in
+  the README "Development" section.
 
 ## Known failure patterns
 

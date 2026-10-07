@@ -38,6 +38,10 @@ REHEARSAL PASSED  report: out/nu6_3/report.json
 
 `examples/zakura.toml` rehearses NU6.3 on Zakura, a Zebra fork, with lightwalletd.
 
+`examples/shielded_sync.toml` syncs a real wallet with zcash-devtool through lightwalletd and checks that it sees Orchard notes from before NU6.3 and Ironwood notes from after.
+
+`examples/shielded_wallet.toml` does the same and then sends one transaction that spends notes from both pools, mines it and checks that it left the mempool.
+
 `examples/failing_project.toml` is the negative control. The node activates the upgrade fine, but its project exits with code 3, so the whole run fails.
 
 ## Usage
@@ -235,6 +239,13 @@ A new upgrade needs no change to zrehearse. Point a plan at a Zebra image that k
 ## Development
 
 The tests in `tests/rehearse.rs` run real rehearsals, so they need Docker and the Zebra images `zfnd/zebra:6.2.3` and `zfnd/zebra:7.0.0-rc.0`. They rehearse the examples, the NU6.3 example on a second image, Zaino on NU6.3 and NU7, a misspelled upgrade, an upgrade the image does not know and a container that fails to start. They also need `electriccoinco/lightwalletd:v0.5.4`, `zingodevops/zaino:0.10.1-no-tls` and `fullstorydev/grpcurl:v1.9.3`.
+
+The tests `shielded_sync_sees_both_pools` and `shielded_wallet_spends_across_the_boundary` also need `zcash-devtool` on `PATH`. Install it with this command.
+
+```sh
+cargo install --locked --git https://github.com/zcash/zcash-devtool \
+  --rev 399fb4ee309afbdfd9e8bfda28ac4f555fdb94de --features regtest_support zcash-devtool
+```
 
 `docs/upstream-dependencies.md` lists the upstream interfaces that zrehearse depends on and how likely each one is to change.
 
