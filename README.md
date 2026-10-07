@@ -36,6 +36,8 @@ REHEARSAL PASSED  report: out/nu6_3/report.json
 
 `examples/light_server.toml` adds lightwalletd in front of the node.
 
+`examples/zaino.toml` puts Zaino in front of the node.
+
 `examples/zakura.toml` rehearses NU6.3 on Zakura, a Zebra fork, with lightwalletd.
 
 `examples/shielded_sync.toml` syncs a real wallet with zcash-devtool through lightwalletd and checks that it sees Orchard notes from before NU6.3 and Ironwood notes from after.

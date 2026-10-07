@@ -238,15 +238,10 @@ fn lightwalletd_serves_nu7() {
 #[test]
 #[ignore = "needs Docker, zfnd/zebra:6.2.3 and zingodevops/zaino:0.10.1-no-tls"]
 fn zaino_serves_nu6_3() {
-    let (output, text, report) = rehearse_toml(
-        "zaino-nu6_3",
-        "name = \"t\"\n[node]\nimage = \"zfnd/zebra:6.2.3\"\n\
-         [upgrade]\nname = \"NU6.3\"\nprevious = \"NU6.2\"\n\
-         [light_server]\nkind = \"zaino\"\nimage = \"zingodevops/zaino:0.10.1-no-tls\"\n",
-    );
-    assert!(output.status.success(), "{text}");
+    let run = rehearse("examples/zaino.toml", "out/e2e-zaino");
+    assert!(run.output.status.success(), "{}", run.stdout);
     for name in LIGHT_CHECKS {
-        assert_eq!(check(&report, name)["passed"], true, "{name}");
+        assert_eq!(check(&run.report, name)["passed"], true, "{name}");
     }
 }
 

@@ -1,0 +1,14 @@
+# Rehearse NU6.3 on Zebra 6.2.3 with Zaino in front of the node. Zaino needs a
+# -no-tls image tag.
+name = "nu6.3 with zaino"
+
+[node]
+image = "zfnd/zebra:6.2.3"
+
+[upgrade]
+name = "NU6.3"
+previous = "NU6.2"
+
+[light_server]
+kind = "zaino"
+image = "zingodevops/zaino:0.10.1-no-tls"
