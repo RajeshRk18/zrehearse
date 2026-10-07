@@ -124,6 +124,9 @@ fn real_main() -> Result<bool> {
     {
         println!("light server error  {error}  (log {})", ls.container.log);
     }
+    if report.shielded_address.is_none() {
+        println!("note  no shielded funding, because the node has no generatetoaddress");
+    }
     if let Some(error) = &report.setup_error {
         bail!("{error}\nreport: {}", out.join("report.json").display());
     }

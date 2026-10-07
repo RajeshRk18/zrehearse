@@ -95,6 +95,7 @@ timeout_secs = 900
 | `project.name` | required | Letters, digits, `-` and `_`. It names the log file. |
 | `project.run` | required | Shell command, run with `sh -c` from the plan file's directory |
 | `project.timeout_secs` | `600` | The project fails if it runs longer. zrehearse then stops the `sh` process, but not the processes that `sh` started. |
+| `funding.shielded_address` | public test address | The Unified Address that receives the shielded rewards |
 | `light_server.kind` | none | `lightwalletd` or `zaino`. Leave out the `[light_server]` table to run without a light server. |
 | `light_server.image` | required with `kind` | Light server image, for example `electriccoinco/lightwalletd:v0.5.4` or `zingodevops/zaino:0.10.1-no-tls`. Zaino needs a `-no-tls` tag. |
 | `light_server.ready_timeout_secs` | `120` | How long the light server may take to serve the block at each tip |
@@ -116,15 +117,17 @@ zrehearse reads `getblockchaininfo` and compares it with the plan.
 4. `getblock` can return the activation block.
 5. After mining `blocks_after` more blocks, the tip is where it should be.
 6. `getaddressutxos` shows a block reward of the funded key that the next block can spend.
+7. The coinbases of the block before activation and of the activation block pay a shielded output. The detail names the pool, for example `109 orchard 1, 110 ironwood 1` for NU6.3. This check runs when both blocks come after block 100.
 
 With a light server, zrehearse starts it at one block before activation, so it sees the activation block arrive. Then it calls the light server over gRPC and compares the answers with zebrad.
 
-7. One block before activation, the light server serves that block.
-8. After activation, it serves the block at the tip.
-9. `GetLightdInfo` reports the branch ID of the upgrade.
-10. `GetBlock` at the activation height and at the tip gives the same hashes as zebrad.
-11. `GetTreeState` at the same heights gives the same Sapling and Orchard trees as `z_gettreestate`.
-12. `GetSubtreeRoots` streams to the end for Sapling and Orchard, with as many roots as `z_getsubtreesbyindex`.
+8. One block before activation, the light server serves that block.
+9. After activation, it serves the block at the tip.
+10. `GetLightdInfo` reports the branch ID of the upgrade.
+11. `GetBlock` at the activation height and at the tip gives the same hashes as zebrad.
+12. The compact blocks at those heights carry the shielded rewards (`outputs`, `actions` or `ironwoodActions`).
+13. `GetTreeState` at the same heights gives the same Sapling and Orchard trees as `z_gettreestate`.
+14. `GetSubtreeRoots` streams to the end for Sapling and Orchard, with as many roots as `z_getsubtreesbyindex`.
 
 zrehearse makes the gRPC calls with `fullstorydev/grpcurl:v1.9.3` in Docker. It uses the `.proto` files of lightwallet-protocol v0.5.0 in `proto/`, because Zaino has no gRPC reflection. The light server and grpcurl share zebrad's network namespace, so zrehearse creates no Docker network.
 
@@ -145,9 +148,13 @@ The project command runs with these environment variables.
 | `ZREHEARSE_TIP` | `120` |
 | `ZREHEARSE_FUNDED_ADDRESS` | `tmV6ufuf8ERqa6nh5CdiyLyzvhXrpAojC7R` |
 | `ZREHEARSE_FUNDED_KEY` | The secret key of that address in WIF, for the compressed public key |
+| `ZREHEARSE_SHIELDED_ADDRESS` | The Unified Address that receives the shielded rewards |
+| `ZREHEARSE_SHIELDED_MNEMONIC` | The seed phrase of that address. Set only with the default address. |
 | `ZREHEARSE_LIGHTWALLETD_URL` | `http://127.0.0.1:32895`, the light server's gRPC endpoint without TLS. Set only with a `[light_server]`. |
 
 zrehearse makes a new transparent key for each run, and every block pays its reward to that key. Zcash lets a block reward be spent only 100 blocks after its block. With the default heights, the next block can spend the rewards of blocks 1 to 21 when projects run, and all of them were mined before activation. Zebra on regtest permits a block reward to be spent to a transparent address. Thus a project can sign a transaction with its own code and send it with `sendrawtransaction`. `getaddressutxos` lists the outputs of the address. `report.json` gives the address as `funded_address`.
+
+Blocks 1 to 100 pay the transparent key. Every later block pays a shielded address with `generatetoaddress`, because shielded rewards need no maturity (ZIP 213). The default address is ZIP 32 account 0 of the public test seed phrase (`abandon` x 23 + `art`), and projects get that phrase. Set `funding.shielded_address` to use your own Unified Address and keep your own seed phrase. A wallet that scans from a birthday needs a birthday of 2 or more, because lightwalletd has no tree state at height 1. A node without `generatetoaddress`, such as Zakura 1.6.0, mines every block to the transparent key, and the run has no shielded funding.
 
 `examples/spend.rs` is a sample project of this kind. Both example plans run it. It signs three spends with its own ZIP 244 code. The node must accept the spend for the new branch ID. It must reject the spend for the previous branch ID, and also the spend with the new branch ID in its header but a sighash for the previous branch.
 
@@ -222,7 +229,6 @@ A new upgrade needs no change to zrehearse. Point a plan at a Zebra image that k
 - No shadow forks. The chain starts empty, not from a copy of mainnet state. Zebra can carry Mainnet history as a configured Testnet with a moved activation height, but that needs a state of about 255 GiB. There are no plans for this. If it is ever added, it must be optional.
 - No transaction generator. Blocks contain only their block reward, unless your suite sends transactions. There are no plans for a generator. If it is ever added, it must be optional.
 - No wallet backend container such as Zallet.
-- zrehearse funds one transparent key. A suite that needs shielded funds must shield them first.
 - Your suite must read the node and light server endpoints from the `ZREHEARSE_*` environment variables. A suite with fixed ports, or one that only knows testnet, needs a small change.
 - Windows. Projects run under `sh`.
 

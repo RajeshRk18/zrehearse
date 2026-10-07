@@ -62,6 +62,8 @@ fn nu6_3_rehearsal_passes() {
     assert!(run.stdout.contains("REHEARSAL PASSED"), "{}", run.stdout);
     assert_eq!(run.report["passed"], true);
     assert_eq!(run.report["previous_branch_id"], "5437f330");
+    let shielded = check(&run.report, "shielded rewards cross the boundary");
+    assert_eq!(shielded["detail"], "109 orchard 1, 110 ironwood 1");
     let checks = run.report["checks"].as_array().unwrap();
     assert!(
         checks
@@ -228,6 +230,8 @@ fn lightwalletd_serves_nu7() {
         assert_eq!(check(&run.report, name)["passed"], true, "{name}");
     }
     assert_eq!(run.report["light_server"]["kind"], "lightwalletd");
+    let served = check(&run.report, "light server serves the shielded rewards");
+    assert_eq!(served["passed"], true);
     assert_eq!(run.report["projects"][0]["passed"], true);
 }
 
@@ -275,6 +279,9 @@ fn zakura_rehearsal_passes() {
         assert_eq!(check(&run.report, name)["passed"], true, "{name}");
     }
     assert_eq!(run.report["projects"][0]["passed"], true);
+    // Zakura 1.6.0 has no generatetoaddress, so the run has no shielded funding.
+    assert_eq!(run.report["shielded_address"], Value::Null);
+    assert!(run.stdout.contains("no shielded funding"), "{}", run.stdout);
 }
 
 /// Without a lockbox disbursement in `node.config`, Zakura rejects the NU6.1

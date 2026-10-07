@@ -25,8 +25,12 @@ pub struct Report {
     pub previous: String,
     /// Consensus branch ID of the previous upgrade, as zebrad reports it.
     pub previous_branch_id: Option<String>,
-    /// The address that receives every block reward. Projects get its key.
+    /// Receives the rewards of blocks 1 to 100. Projects get its key.
     pub funded_address: String,
+    /// Receives the rewards of every later block, as shielded outputs.
+    /// `None` when the node has no `generatetoaddress`, so every block paid
+    /// the transparent key.
+    pub shielded_address: Option<String>,
     pub checks: Vec<Check>,
     pub projects: Vec<ProjectResult>,
     pub passed: bool,
@@ -107,6 +111,7 @@ pub fn run(plan: &Plan, out: &Path, keep: bool) -> Result<Report> {
         previous: plan.upgrade.previous.clone(),
         previous_branch_id: None,
         funded_address: key.address.clone(),
+        shielded_address: Some(plan.funding.shielded_address().to_string()),
         checks: Vec::new(),
         projects: Vec::new(),
         passed: false,
@@ -243,7 +248,7 @@ fn activation_checks(
     }
 
     let tip = node.height()?;
-    node.mine((height - 1).saturating_sub(tip))?;
+    mine(node, report, (height - 1).saturating_sub(tip))?;
 
     // The light server starts before the boundary, so it sees the
     // activation block arrive.
@@ -302,7 +307,7 @@ fn activation_checks(
         ),
     );
 
-    node.mine(1)?;
+    mine(node, report, 1)?;
     let info = node.rpc("getblockchaininfo", json!([]))?;
     let (_, upgrade) = find_upgrade(&info, target).context("upgrade vanished after activation")?;
     let tip_branch = info["consensus"]["chaintip"].as_str().unwrap_or_default();
@@ -330,7 +335,7 @@ fn activation_checks(
         },
     );
 
-    node.mine(plan.upgrade.blocks_after)?;
+    mine(node, report, plan.upgrade.blocks_after)?;
     let want = height + plan.upgrade.blocks_after;
     let got = node.height()?;
     check(
@@ -360,8 +365,39 @@ fn activation_checks(
         format!("{spendable} spendable outputs for {address} at tip {got}"),
     );
 
+    // The first COINBASE_MATURITY blocks fund the transparent key, so only
+    // later blocks pay the shielded address.
+    let shielded_boundary = report.shielded_address.is_some() && height - 1 > COINBASE_MATURITY;
+    if shielded_boundary {
+        record(report, "shielded rewards cross the boundary", || {
+            let mut detail = Vec::new();
+            let mut paid = true;
+            for h in [height - 1, height] {
+                let pools = coinbase_pools(&node.rpc("getblock", json!([h.to_string(), 2]))?);
+                paid &= !pools.is_empty();
+                detail.push(format!(
+                    "{h} {}",
+                    if pools.is_empty() {
+                        "none".into()
+                    } else {
+                        pools.join(" ")
+                    }
+                ));
+            }
+            Ok((paid, detail.join(", ")))
+        });
+    }
+
     if let (Some(ls), Some(timeout), true) = (light.as_ref(), light_timeout, light_follows) {
-        light_server_checks(ls, node, report, [height, got], &branch, timeout);
+        light_server_checks(
+            ls,
+            node,
+            report,
+            [height, got],
+            &branch,
+            timeout,
+            shielded_boundary,
+        );
     }
     Ok(())
 }
@@ -375,6 +411,7 @@ fn light_server_checks(
     heights: [u32; 2],
     branch: &str,
     timeout: Duration,
+    shielded: bool,
 ) {
     let info = match ls.wait_for_height(heights[1], timeout) {
         Ok(info) => info,
@@ -419,6 +456,29 @@ fn light_server_checks(
         }
         Ok((same, detail.join(", ")))
     });
+
+    if shielded {
+        record(report, "light server serves the shielded rewards", || {
+            let mut detail = Vec::new();
+            let mut served = true;
+            for h in heights {
+                let block = ls.call_json("GetBlock", &format!("{{\"height\":{h}}}"))?;
+                let n: usize = block["vtx"].as_array().map_or(0, |txs| {
+                    txs.iter()
+                        .map(|tx| {
+                            ["outputs", "actions", "ironwoodActions"]
+                                .iter()
+                                .map(|f| tx[*f].as_array().map_or(0, Vec::len))
+                                .sum::<usize>()
+                        })
+                        .sum()
+                });
+                served &= n > 0;
+                detail.push(format!("{h} {n} outputs"));
+            }
+            Ok((served, detail.join(", ")))
+        });
+    }
 
     record(report, "light server tree states match the node", || {
         let mut detail = Vec::new();
@@ -473,6 +533,44 @@ fn record(report: &mut Report, name: &str, eval: impl FnOnce() -> Result<(bool, 
         Ok((passed, detail)) => check(report, name, passed, detail),
         Err(e) => check(report, name, false, format!("{e:#}")),
     }
+}
+
+/// Mines `n` blocks. Blocks up to COINBASE_MATURITY pay the transparent key,
+/// so they are spendable when projects run. Later blocks pay the shielded
+/// address, because shielded rewards need no maturity (ZIP 213).
+/// A node without `generatetoaddress`, such as Zakura 1.6.0, mines every
+/// block to the transparent key, and the run has no shielded funding.
+fn mine(node: &Node, report: &mut Report, n: u32) -> Result<()> {
+    let tip = node.height()?;
+    let transparent = n.min(COINBASE_MATURITY.saturating_sub(tip));
+    node.mine(transparent)?;
+    let rest = n - transparent;
+    let Some(address) = report.shielded_address.clone() else {
+        return node.mine(rest);
+    };
+    match node.mine_to(rest, &address) {
+        Err(e) if format!("{e:#}").contains("-32601") => {
+            report.shielded_address = None;
+            node.mine(rest)
+        }
+        other => other,
+    }
+}
+
+/// The shielded pools that a block's coinbase pays, with output counts, from
+/// `getblock <h> 2`. For example `["ironwood 1"]`.
+fn coinbase_pools(block: &Value) -> Vec<String> {
+    let tx = &block["tx"][0];
+    let count = |v: &Value| v.as_array().map_or(0, Vec::len);
+    [
+        ("sapling", count(&tx["vShieldedOutput"])),
+        ("orchard", count(&tx["orchard"]["actions"])),
+        ("ironwood", count(&tx["ironwood"]["actions"])),
+    ]
+    .into_iter()
+    .filter(|(_, n)| *n > 0)
+    .map(|(pool, n)| format!("{pool} {n}"))
+    .collect()
 }
 
 fn find_upgrade(info: &Value, name: &str) -> Option<(String, Value)> {
@@ -535,6 +633,19 @@ fn run_project(
             )
             .env("ZREHEARSE_FUNDED_ADDRESS", &key.address)
             .env("ZREHEARSE_FUNDED_KEY", &key.wif)
+            .envs(
+                report
+                    .shielded_address
+                    .as_deref()
+                    .map(|a| ("ZREHEARSE_SHIELDED_ADDRESS", a)),
+            )
+            .envs(
+                report
+                    .shielded_address
+                    .as_ref()
+                    .and(plan.funding.mnemonic())
+                    .map(|m| ("ZREHEARSE_SHIELDED_MNEMONIC", m)),
+            )
             .envs(light.map(|ls| ("ZREHEARSE_LIGHTWALLETD_URL", ls.url.as_str())))
             .env(
                 "ZREHEARSE_TIP",

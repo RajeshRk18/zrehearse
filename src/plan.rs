@@ -22,6 +22,8 @@ pub struct Plan {
     #[serde(default, rename = "project")]
     pub projects: Vec<Project>,
     pub light_server: Option<LightServerSpec>,
+    #[serde(default)]
+    pub funding: FundingSpec,
     /// Directory of the plan file. Project commands run from here.
     #[serde(skip)]
     pub base_dir: PathBuf,
@@ -53,6 +55,37 @@ pub struct UpgradeSpec {
     pub height: u32,
     #[serde(default = "default_blocks_after")]
     pub blocks_after: u32,
+}
+
+/// The public test seed phrase (`abandon` x 23 + `art`). Never use it for
+/// real funds.
+pub const PUBLIC_TEST_MNEMONIC: &str = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon art";
+/// ZIP 32 account 0 of that phrase, diversifier 0, with Orchard, Sapling and
+/// P2PKH receivers. zingolabs/ztest and zcashlabs/thus-spoke-zakura publish
+/// the same address.
+pub const PUBLIC_TEST_ADDRESS: &str = "uregtest1zkuzfv5m3yhv2j4fmvq5rjurkxenxyq8r7h4daun2zkznrjaa8ra8asgdm8wwgwjvlwwrxx7347r8w0ee6dqyw4rufw4wg9djwcr6frzkezmdw6dud3wsm99eany5r8wgsctlxquu009nzd6hsme2tcsk0v3sgjvxa70er7h27z5epr67p5q767s2z5gt88paru56mxpm6pwz0cu35m";
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct FundingSpec {
+    /// Receives the shielded block rewards. The default is
+    /// `PUBLIC_TEST_ADDRESS`, whose seed phrase projects get.
+    pub shielded_address: Option<String>,
+}
+
+impl FundingSpec {
+    pub fn shielded_address(&self) -> &str {
+        self.shielded_address
+            .as_deref()
+            .unwrap_or(PUBLIC_TEST_ADDRESS)
+    }
+
+    /// The seed phrase of the shielded address, when zrehearse knows it.
+    pub fn mnemonic(&self) -> Option<&str> {
+        self.shielded_address
+            .is_none()
+            .then_some(PUBLIC_TEST_MNEMONIC)
+    }
 }
 
 #[derive(Debug, Deserialize)]

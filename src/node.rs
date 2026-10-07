@@ -116,10 +116,19 @@ impl Node {
             .context("getblockcount is not a height")
     }
 
-    /// Mines `n` blocks with the regtest-only `generate` RPC.
+    /// Mines `n` blocks to the miner address with the regtest-only `generate` RPC.
     pub fn mine(&self, n: u32) -> Result<()> {
         if n > 0 {
             self.rpc("generate", json!([n]))?;
+        }
+        Ok(())
+    }
+
+    /// Mines `n` blocks that pay `address`, with the regtest-only
+    /// `generatetoaddress` RPC.
+    pub fn mine_to(&self, n: u32, address: &str) -> Result<()> {
+        if n > 0 {
+            self.rpc("generatetoaddress", json!([n, address]))?;
         }
         Ok(())
     }
