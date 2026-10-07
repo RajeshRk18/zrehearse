@@ -117,15 +117,15 @@ fn real_main() -> Result<bool> {
     if let Some(node) = &report.node
         && let Some(error) = node.errors.last()
     {
-        println!("zebrad error  {error}  (log {})", node.log);
+        println!("ERROR  zebrad  {error}  (log {})", node.log);
     }
     if let Some(ls) = &report.light_server
         && let Some(error) = ls.container.errors.last()
     {
-        println!("light server error  {error}  (log {})", ls.container.log);
+        println!("ERROR  light server  {error}  (log {})", ls.container.log);
     }
     if report.shielded_address.is_none() {
-        println!("note  no shielded funding, because the node has no generatetoaddress");
+        println!("NOTE  no shielded funding, because the node has no generatetoaddress");
     }
     if let Some(error) = &report.setup_error {
         bail!("{error}\nreport: {}", out.join("report.json").display());

@@ -204,7 +204,7 @@ fn misspelled_upgrade_reports_the_zebrad_error() {
             .any(|e| e.as_str().unwrap().contains("unknown field `Nu7`")),
         "{errors:?}"
     );
-    assert!(text.contains("zebrad error"), "{text}");
+    assert!(text.contains("ERROR  zebrad"), "{text}");
 }
 
 #[test]
