@@ -24,7 +24,7 @@ jobs:
         run: cargo test
       - name: Pull images
         run: |
-          for image in zfnd/zebra:6.2.3 zfnd/zebra:7.0.0-rc.0 electriccoinco/lightwalletd:v0.5.4 \
+          for image in zfnd/zebra:6.2.3 zfnd/zebra:7.0.0-rc.0 zakuracore/zakura:1.6.0 electriccoinco/lightwalletd:v0.5.4 \
             zingodevops/zaino:0.10.1-no-tls fullstorydev/grpcurl:v1.9.3; do
             docker pull "$image"
           done

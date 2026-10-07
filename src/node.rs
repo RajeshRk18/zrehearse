@@ -24,6 +24,7 @@ impl Node {
         config: &Path,
         miner_address: &str,
         extra_ports: &[u16],
+        env: &std::collections::BTreeMap<String, String>,
         keep: bool,
     ) -> Result<Self> {
         let config = std::fs::canonicalize(config)
@@ -33,7 +34,9 @@ impl Node {
             .chain(extra_ports)
             .map(|p| format!("127.0.0.1::{p}"))
             .collect();
+        let env: Vec<String> = env.iter().map(|(k, v)| format!("{k}={v}")).collect();
         let mut args: Vec<&str> = ports.iter().flat_map(|p| ["-p", p.as_str()]).collect();
+        args.extend(env.iter().flat_map(|e| ["-e", e.as_str()]));
         let rpc_listen = format!("ZEBRA_RPC__LISTEN_ADDR=0.0.0.0:{RPC_PORT}");
         let miner = format!("ZEBRA_MINING__MINER_ADDRESS={miner_address}");
         args.extend([

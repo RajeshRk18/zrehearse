@@ -27,6 +27,7 @@ section "Limits".
 
 - Docker must be running.
 - The Docker tests need `zfnd/zebra:6.2.3`, `zfnd/zebra:7.0.0-rc.0`,
+  `zakuracore/zakura:1.6.0`,
   `electriccoinco/lightwalletd:v0.5.4`, `zingodevops/zaino:0.10.1-no-tls` and
   `fullstorydev/grpcurl:v1.9.3`. The light server images are amd64 only.
   Docker runs them on arm64 hosts with emulation.
@@ -53,6 +54,11 @@ section "Limits".
 - Zaino 0.10.1 cannot serve an NU7 chain. Its index stops at the block before
   activation. The test `zaino_0_10_1_stops_at_nu7` expects this.
 - Zaino colors its log. `docker::error_lines` strips the color codes.
+- Zakura rejects an NU6.1 activation block without a lockbox disbursement.
+  Zebra 6.2.3 panics on a P2PKH lockbox address. The address must be P2SH.
+  Plans set it in `[node.config]`. zrehearse does not set it.
+- Node-specific settings belong in `[node.config]` and `[node.env]` of a plan,
+  not in zrehearse's code. Add code only for what a plan cannot set.
 
 ## Guardrails
 

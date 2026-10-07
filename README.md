@@ -36,6 +36,8 @@ REHEARSAL PASSED  report: out/nu6_3/report.json
 
 `examples/light_server.toml` adds lightwalletd in front of the node.
 
+`examples/zakura.toml` rehearses NU6.3 on Zakura, a Zebra fork, with lightwalletd.
+
 `examples/failing_project.toml` is the negative control. The node activates the upgrade fine, but its project exits with code 3, so the whole run fails.
 
 ## Usage
@@ -82,8 +84,10 @@ timeout_secs = 900
 | Field | Default | Meaning |
 |---|---|---|
 | `name` | required | Free text, copied into the report |
-| `node.image` | required | Zebra image to run. The image must know both upgrade names. |
+| `node.image` | required | Zebra or Zakura image to run. The image must know both upgrade names. |
 | `node.ready_timeout_secs` | `120` | How long to wait for zebrad's RPC to answer |
+| `node.config` | none | A TOML table merged into the generated node config, for settings that one node or version needs |
+| `node.env` | none | Extra environment variables for the node container |
 | `upgrade.name` | required | The upgrade under test, as Zebra names it, for example `NU6.3`. NU5 and later are supported. |
 | `upgrade.previous` | required | The upgrade active before it, for example `NU6.2` |
 | `upgrade.height` | `110` | Activation height, 3 or more. `height + blocks_after` must be above 100, so that the funded key has a spendable block reward. |
@@ -94,6 +98,11 @@ timeout_secs = 900
 | `light_server.kind` | none | `lightwalletd` or `zaino`. Leave out the `[light_server]` table to run without a light server. |
 | `light_server.image` | required with `kind` | Light server image, for example `electriccoinco/lightwalletd:v0.5.4` or `zingodevops/zaino:0.10.1-no-tls`. Zaino needs a `-no-tls` tag. |
 | `light_server.ready_timeout_secs` | `120` | How long the light server may take to serve the block at each tip |
+| `light_server.config` | none | A TOML table merged into the generated `zainod.toml`. Zaino only. |
+| `light_server.env` | none | Extra environment variables for the light server container |
+| `light_server.args` | none | Extra arguments after zrehearse's own, for example lightwalletd flags |
+
+zrehearse owns the settings that its checks depend on. These are the network name, the activation heights, the RPC listen address, cookie auth and the miner address, and the light server's RPC target and gRPC bind address. A plan that sets one of them is rejected with the name of the setting. Every other setting goes to the container unchanged. Thus a node or light server release that needs a new setting needs no zrehearse release. `examples/zakura.toml` uses `[node.config]` for the lockbox disbursement that Zakura requires.
 
 The node config sets only two heights. `previous` activates at height 2, and the upgrade under test activates at your height. Zebra activates the upgrades before `previous` at height 2 or lower. Later upgrades are left out, so they never activate. zrehearse has no list of upgrades. Zebra checks the names and their order.
 

@@ -92,12 +92,15 @@ impl LightServer {
                     "--log-file",
                     "/dev/stdout",
                 ];
-                Container::run(&name, &args, keep)
+                Container::run(&name, &with_extras(&args, spec), keep)
             }
             LightServerKind::Zaino => {
                 // zainod needs a config file. The rest comes from ZAINO_* env.
                 let config = out.join("zainod.toml");
-                std::fs::write(&config, "network = \"Regtest\"\n")
+                let mut zainod =
+                    toml::Table::from_iter([("network".to_string(), "Regtest".into())]);
+                crate::plan::merge(&mut zainod, &spec.config);
+                std::fs::write(&config, toml::to_string(&zainod)?)
                     .with_context(|| format!("writing {}", config.display()))?;
                 let config = std::fs::canonicalize(&config)
                     .with_context(|| format!("resolving {}", config.display()))?;
@@ -112,7 +115,7 @@ impl LightServer {
                     &format!("ZAINO_GRPC_SETTINGS__LISTEN_ADDRESS=0.0.0.0:{port}"),
                     &spec.image,
                 ];
-                Container::run(&name, &args, keep)
+                Container::run(&name, &with_extras(&args, spec), keep)
             }
         };
         let mut container = container.with_context(|| format!("starting {}", spec.image))?;
@@ -193,6 +196,22 @@ impl LightServer {
             std::thread::sleep(Duration::from_secs(1));
         }
     }
+}
+
+/// Puts `spec.env` before the image and `spec.args` after the existing
+/// arguments, which end with the image or with the light server's own flags.
+fn with_extras<'a>(args: &[&'a str], spec: &'a LightServerSpec) -> Vec<String> {
+    let image = args
+        .iter()
+        .position(|a| *a == spec.image)
+        .expect("args hold the image");
+    let mut out: Vec<String> = args[..image].iter().map(|a| a.to_string()).collect();
+    for (k, v) in &spec.env {
+        out.extend(["-e".to_string(), format!("{k}={v}")]);
+    }
+    out.extend(args[image..].iter().map(|a| a.to_string()));
+    out.extend(spec.args.iter().cloned());
+    out
 }
 
 /// A compact block hash as RPC prints it. gRPC JSON gives the bytes in

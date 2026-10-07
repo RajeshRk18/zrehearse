@@ -20,6 +20,7 @@ zrehearse drives Zebra, lightwalletd, Zaino and grpcurl through their images, fl
 | Zebra | Config key `network.testnet_parameters.activation_heights` | Medium. | `src/plan.rs` |
 | Zebra | RPC shapes of `getblockchaininfo` (upgrades by branch ID, `consensus.chaintip` and `nextblock`), `getblock`, `getaddressutxos`, `z_gettreestate`, `z_getsubtreesbyindex` | Low. Wallets and light servers depend on them too. | `src/rehearse.rs` |
 | Zebra | Regtest behavior. Upgrades below `previous` get the next configured height, and block rewards can be spent to transparent outputs. | Low to medium. Verified on 6.2.3 and 7.0.0-rc.0 only. | `src/plan.rs`, `src/rehearse.rs` |
+| Zakura | Reads the config at Zebra's path `/home/zebra/.config/zebrad.toml` (it warns that the name is deprecated) and maps the legacy `ZEBRA_*` env vars to `ZAKURA_*` | Medium. A later release can drop the old path or the env var mapping. Then zrehearse needs a config path setting. | `src/node.rs` |
 | Zebra | Coinbase maturity of 100 blocks | Low. It is a consensus rule. | `src/plan.rs` |
 | lightwallet-protocol | Method names and the fields zrehearse reads (`blockHeight`, `consensusBranchId`, `hash`, `saplingTree`, `orchardTree`) | Low. New fields do not break zrehearse. | `src/lightserver.rs`, `src/rehearse.rs` |
 | Zcash consensus | A v5 transaction stays valid after the upgrade | Low. Only `examples/spend.rs` depends on it. A future upgrade that rejects v5 needs a v6 builder there. | `examples/spend.rs` |

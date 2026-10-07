@@ -127,6 +127,7 @@ pub fn run(plan: &Plan, out: &Path, keep: bool) -> Result<Report> {
         &config,
         &key.address,
         &light_ports,
+        &plan.node.env,
         keep,
     )?;
     // Declared after the node, so Drop removes it first.

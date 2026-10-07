@@ -30,9 +30,9 @@ pub struct Container {
 
 impl Container {
     /// Runs `docker run -d --name <name> --label zrehearse <args>`.
-    pub fn run(name: &str, args: &[&str], keep: bool) -> Result<Self> {
+    pub fn run<S: AsRef<str>>(name: &str, args: &[S], keep: bool) -> Result<Self> {
         let mut full = vec!["run", "-d", "--name", name, "--label", LABEL];
-        full.extend(args);
+        full.extend(args.iter().map(AsRef::as_ref));
         if let Err(e) = docker(&full) {
             // `docker run` can fail after it created the container, for
             // example when the port bind fails.
@@ -155,7 +155,8 @@ pub fn error_lines(log: &str) -> Vec<String> {
             if let Some(msg) = line.strip_prefix("error: ") {
                 return Some(msg.to_string());
             }
-            if line.contains("panicked at") {
+            // zebrad and Zakura log a rejected block at INFO level.
+            if line.contains("panicked at") || line.contains("failed verification") {
                 return Some(line.to_string());
             }
             if line.starts_with('{') {
@@ -207,6 +208,7 @@ error: zebrad fatal error: Configuration error: unknown field `Nu7`
   \x1b[2m12:37:18.948\x1b[0m \x1b[31mERROR\x1b[0m \x1b[1;31mzainodlib\x1b[0m: Zaino failed to start
 {"app":"lightwalletd","level":"warning","msg":"Starting insecure no-TLS (plaintext) server"}
 {"app":"lightwalletd","level":"error","msg":"getblock failed"}
+2026-10-06T13:57:51.534853Z  INFO rpc_request: zakura_rpc::methods: submit block failed verification error=missing lockbox disbursements
 "#
         .replace("\\x1b", "\x1b");
         assert_eq!(
@@ -217,6 +219,7 @@ error: zebrad fatal error: Configuration error: unknown field `Nu7`
                 "zebrad fatal error: Configuration error: unknown field `Nu7`",
                 "zainodlib: Zaino failed to start",
                 "getblock failed",
+                "2026-10-06T13:57:51.534853Z  INFO rpc_request: zakura_rpc::methods: submit block failed verification error=missing lockbox disbursements",
             ]
         );
     }

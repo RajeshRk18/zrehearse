@@ -265,3 +265,35 @@ fn zaino_0_10_1_stops_at_nu7() {
     let detail = tip["detail"].as_str().unwrap();
     assert!(detail.contains("best chain tip [109]"), "{detail}");
 }
+
+#[test]
+#[ignore = "needs Docker, zakuracore/zakura:1.6.0 and electriccoinco/lightwalletd:v0.5.4"]
+fn zakura_rehearsal_passes() {
+    let run = rehearse("examples/zakura.toml", "out/e2e-zakura");
+    assert!(run.output.status.success(), "{}", run.stdout);
+    for name in LIGHT_CHECKS {
+        assert_eq!(check(&run.report, name)["passed"], true, "{name}");
+    }
+    assert_eq!(run.report["projects"][0]["passed"], true);
+}
+
+/// Without a lockbox disbursement in `node.config`, Zakura rejects the NU6.1
+/// activation block, and the report names the cause.
+#[test]
+#[ignore = "needs Docker and zakuracore/zakura:1.6.0"]
+fn zakura_without_lockbox_names_the_cause() {
+    let (output, text, report) = rehearse_toml(
+        "zakura-no-lockbox",
+        "name = \"t\"\n[node]\nimage = \"zakuracore/zakura:1.6.0\"\n\
+         [upgrade]\nname = \"NU6.3\"\nprevious = \"NU6.2\"\n",
+    );
+    assert_eq!(output.status.code(), Some(1), "{text}");
+    let errors = report["node"]["errors"].as_array().unwrap();
+    assert!(
+        errors.iter().any(|e| e
+            .as_str()
+            .unwrap()
+            .contains("missing lockbox disbursements")),
+        "{errors:?}"
+    );
+}

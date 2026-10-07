@@ -2,6 +2,7 @@
 
 use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 /// Height where `upgrade.previous` activates. Zebra activates the upgrades
@@ -32,6 +33,13 @@ pub struct NodeSpec {
     pub image: String,
     #[serde(default = "default_ready_timeout")]
     pub ready_timeout_secs: u64,
+    /// Merged into the generated node config, for settings that only one node
+    /// implementation or version needs.
+    #[serde(default)]
+    pub config: toml::Table,
+    /// Extra environment variables for the node container.
+    #[serde(default)]
+    pub env: BTreeMap<String, String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -55,6 +63,15 @@ pub struct LightServerSpec {
     /// How long the light server may take to reach each tip.
     #[serde(default = "default_ready_timeout")]
     pub ready_timeout_secs: u64,
+    /// Merged into the generated `zainod.toml`. Zaino only.
+    #[serde(default)]
+    pub config: toml::Table,
+    /// Extra environment variables for the light server container.
+    #[serde(default)]
+    pub env: BTreeMap<String, String>,
+    /// Extra arguments after the image, for example lightwalletd flags.
+    #[serde(default)]
+    pub args: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize)]
@@ -105,6 +122,24 @@ impl Plan {
     }
 
     fn validate(&self) -> Result<()> {
+        reject_owned_keys("node.config", &self.node.config, NODE_CONFIG_KEYS)?;
+        reject_owned_env("node.env", &self.node.env, NODE_ENV_SUFFIXES)?;
+        if let Some(ls) = &self.light_server {
+            if !ls.config.is_empty() && matches!(ls.kind, LightServerKind::Lightwalletd) {
+                bail!(
+                    "light_server.config is only for zaino. Use light_server.args for lightwalletd"
+                );
+            }
+            reject_owned_keys("light_server.config", &ls.config, &[&["network"]])?;
+            reject_owned_env("light_server.env", &ls.env, ZAINO_ENV_SUFFIXES)?;
+            if let Some(arg) = ls.args.iter().find(|a| {
+                LIGHTWALLETD_FLAGS
+                    .iter()
+                    .any(|f| a.as_str() == *f || a.starts_with(&format!("{f}=")))
+            }) {
+                bail!("light_server.args sets {arg}, which zrehearse owns");
+            }
+        }
         let u = &self.upgrade;
         if u.name.is_empty() {
             bail!("upgrade.name must not be empty");
@@ -160,14 +195,84 @@ impl Plan {
     /// and the target at the planned height. Zebra fills in the upgrades
     /// before `previous`, and later upgrades are left out so they never
     /// activate.
+    /// `node.config` is merged in last.
     pub fn zebrad_toml(&self) -> String {
-        let key = |name: &str| toml::Value::String(name.to_string()).to_string();
-        format!(
-            "[network]\nnetwork = \"Regtest\"\n\n[network.testnet_parameters.activation_heights]\n{} = {PREVIOUS_HEIGHT}\n{} = {}\n",
-            key(&self.upgrade.previous),
-            key(&self.upgrade.name),
-            self.upgrade.height
-        )
+        let mut heights = toml::Table::new();
+        heights.insert(self.upgrade.previous.clone(), PREVIOUS_HEIGHT.into());
+        heights.insert(self.upgrade.name.clone(), self.upgrade.height.into());
+        let mut config: toml::Table = toml::toml! {
+            [network]
+            network = "Regtest"
+        };
+        config["network"]
+            .as_table_mut()
+            .expect("network is a table")
+            .insert(
+                "testnet_parameters".into(),
+                toml::Value::Table(toml::Table::from_iter([(
+                    "activation_heights".to_string(),
+                    toml::Value::Table(heights),
+                )])),
+            );
+        merge(&mut config, &self.node.config);
+        toml::to_string(&config).expect("a TOML table serializes")
+    }
+}
+
+/// Config keys that zrehearse writes and its checks depend on.
+const NODE_CONFIG_KEYS: &[&[&str]] = &[
+    &["network", "network"],
+    &["network", "testnet_parameters", "activation_heights"],
+    &["rpc", "listen_addr"],
+    &["rpc", "enable_cookie_auth"],
+    &["mining", "miner_address"],
+];
+/// Node env vars that zrehearse sets, after the `ZEBRA_` or `ZAKURA_` prefix.
+const NODE_ENV_SUFFIXES: &[&str] = &[
+    "_RPC__LISTEN_ADDR",
+    "_RPC__ENABLE_COOKIE_AUTH",
+    "_MINING__MINER_ADDRESS",
+];
+/// Zaino env vars that zrehearse sets.
+const ZAINO_ENV_SUFFIXES: &[&str] = &[
+    "_VALIDATOR_SETTINGS__VALIDATOR_JSONRPC_LISTEN_ADDRESS",
+    "_GRPC_SETTINGS__LISTEN_ADDRESS",
+];
+/// lightwalletd flags that zrehearse sets.
+const LIGHTWALLETD_FLAGS: &[&str] = &["--grpc-bind-addr", "--rpchost", "--rpcport"];
+
+fn reject_owned_keys(field: &str, table: &toml::Table, owned: &[&[&str]]) -> Result<()> {
+    for path in owned {
+        let mut at = Some(table);
+        for (i, key) in path.iter().enumerate() {
+            match at.and_then(|t| t.get(*key)) {
+                Some(_) if i + 1 == path.len() => {
+                    bail!("{field} sets {}, which zrehearse owns", path.join("."))
+                }
+                Some(toml::Value::Table(t)) => at = Some(t),
+                _ => break,
+            }
+        }
+    }
+    Ok(())
+}
+
+fn reject_owned_env(field: &str, env: &BTreeMap<String, String>, suffixes: &[&str]) -> Result<()> {
+    if let Some(name) = env.keys().find(|k| suffixes.iter().any(|s| k.ends_with(s))) {
+        bail!("{field} sets {name}, which zrehearse owns");
+    }
+    Ok(())
+}
+
+/// Merges `extra` into `base`. Tables merge key by key, other values replace.
+pub fn merge(base: &mut toml::Table, extra: &toml::Table) {
+    for (key, value) in extra {
+        match (base.get_mut(key), value) {
+            (Some(toml::Value::Table(b)), toml::Value::Table(e)) => merge(b, e),
+            _ => {
+                base.insert(key.clone(), value.clone());
+            }
+        }
     }
 }
 
@@ -263,6 +368,55 @@ mod tests {
              [light_server]\nkind = \"lwd\"\nimage = \"x\"\n"
         ));
         assert!(bad.unwrap_err().to_string().contains("unknown variant"));
+    }
+
+    #[test]
+    fn node_config_merges_into_the_generated_config() {
+        let p = plan(&format!(
+            "name = \"t\"\n{NODE}[node.config.network.testnet_parameters]\n\
+             lockbox_disbursements = [{{ address = \"t2x\", amount = 0 }}]\n\
+             [node.config.mempool]\ndebug_enable_at_height = 0\n\
+             [upgrade]\nname = \"NU6.3\"\nprevious = \"NU6.2\"\n"
+        ))
+        .unwrap();
+        let cfg: toml::Table = toml::from_str(&p.zebrad_toml()).unwrap();
+        let tp = &cfg["network"]["testnet_parameters"];
+        assert_eq!(tp["activation_heights"]["NU6.3"].as_integer(), Some(110));
+        assert_eq!(
+            tp["lockbox_disbursements"][0]["address"].as_str(),
+            Some("t2x")
+        );
+        assert_eq!(
+            cfg["mempool"]["debug_enable_at_height"].as_integer(),
+            Some(0)
+        );
+        assert_eq!(cfg["network"]["network"].as_str(), Some("Regtest"));
+    }
+
+    #[test]
+    fn rejects_keys_that_zrehearse_owns() {
+        let up = "[upgrade]\nname = \"NU6.3\"\nprevious = \"NU6.2\"\n";
+        let err = |extra: &str| {
+            plan(&format!("name = \"t\"\n{NODE}{extra}{up}"))
+                .unwrap_err()
+                .to_string()
+        };
+        assert_eq!(
+            err("[node.config.network.testnet_parameters.activation_heights]\nNU7 = 5\n"),
+            "node.config sets network.testnet_parameters.activation_heights, which zrehearse owns"
+        );
+        assert!(
+            err("[node.config.mining]\nminer_address = \"x\"\n").contains("mining.miner_address")
+        );
+        assert!(
+            err("[node.env]\nZAKURA_RPC__LISTEN_ADDR = \"x\"\n")
+                .contains("ZAKURA_RPC__LISTEN_ADDR")
+        );
+        let lwd = "[light_server]\nkind = \"lightwalletd\"\nimage = \"x\"\n";
+        assert!(err(&format!("{lwd}args = [\"--rpchost=y\"]\n")).contains("--rpchost=y"));
+        assert!(err(&format!("{lwd}[light_server.config]\na = 1\n")).contains("only for zaino"));
+        let ok = format!("{lwd}args = [\"--log-level\", \"7\"]\n[light_server.env]\nA = \"1\"\n");
+        assert!(plan(&format!("name = \"t\"\n{NODE}{ok}{up}")).is_ok());
     }
 
     #[test]

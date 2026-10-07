@@ -1,0 +1,24 @@
+# Rehearse NU6.3 on Zakura, a Zebra fork, at the default height 110.
+name = "nu6.3 on zakura 1.6.0"
+
+[node]
+image = "zakuracore/zakura:1.6.0"
+
+# Zakura rejects an NU6.1 activation block without a lockbox disbursement,
+# and regtest configures none. A zero-amount disbursement satisfies the rule.
+# The address must be P2SH. This is the marker that Zakura's own regtest
+# generator uses.
+[node.config.network.testnet_parameters]
+lockbox_disbursements = [{ address = "t26YoyZ1iPgiMEWL4zGUm74eVWfhyDMXzY2", amount = 0 }]
+
+[upgrade]
+name = "NU6.3"
+previous = "NU6.2"
+
+[light_server]
+kind = "lightwalletd"
+image = "electriccoinco/lightwalletd:v0.5.4"
+
+[[project]]
+name = "spend"
+run = "cargo run --quiet --example spend"
