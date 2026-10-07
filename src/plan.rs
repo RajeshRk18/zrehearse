@@ -57,13 +57,13 @@ pub struct UpgradeSpec {
     pub blocks_after: u32,
 }
 
-/// The public test seed phrase (`abandon` x 23 + `art`). Never use it for
-/// real funds.
-pub const PUBLIC_TEST_MNEMONIC: &str = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon art";
-/// ZIP 32 account 0 of that phrase, diversifier 0, with Orchard, Sapling and
-/// P2PKH receivers. zingolabs/ztest and zcashlabs/thus-spoke-zakura publish
-/// the same address.
-pub const PUBLIC_TEST_ADDRESS: &str = "uregtest1zkuzfv5m3yhv2j4fmvq5rjurkxenxyq8r7h4daun2zkznrjaa8ra8asgdm8wwgwjvlwwrxx7347r8w0ee6dqyw4rufw4wg9djwcr6frzkezmdw6dud3wsm99eany5r8wgsctlxquu009nzd6hsme2tcsk0v3sgjvxa70er7h27z5epr67p5q767s2z5gt88paru56mxpm6pwz0cu35m";
+/// zrehearse's public test seed phrase (`hidden` x 23 + `protect`, a valid
+/// BIP-39 phrase). Everyone can read it, so never use it for real funds.
+pub const PUBLIC_TEST_MNEMONIC: &str = "hidden hidden hidden hidden hidden hidden hidden hidden hidden hidden hidden hidden hidden hidden hidden hidden hidden hidden hidden hidden hidden hidden hidden protect";
+/// The default Unified Address of ZIP 32 account 0 of that phrase, on regtest.
+/// Diversifier index 0 is not a valid Sapling diversifier for this key, so the
+/// default address uses index 1.
+pub const PUBLIC_TEST_ADDRESS: &str = "uregtest17eg8tfltj5e6s90d78cd9vwdm87aqf6x5q0rm3cfr45s4ljextrxlh092dec72gv9saccwrxc779k9rakhuaterjvctch3h6sdy83uxxxutefj5kz4w6z8nss7lqx0k63u5auq2ta95wd6lmvzt26puej5pps6py4aj2r0l62gm6c604";
 
 #[derive(Debug, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
