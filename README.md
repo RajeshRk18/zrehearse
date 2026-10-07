@@ -24,23 +24,14 @@ rehearsing NU6.3 at height 110 on zfnd/zebra:6.2.3
 PASS  previous upgrade in force before activation  (tip 109, chaintip 5437f330, expected NU6.2 branch 5437f330)
 PASS  pending one block before activation  (tip 109, status "pending", nextblock 37a5165b, expected branch 37a5165b)
 PASS  active at the activation height  (tip 110, status "active", chaintip 37a5165b)
-PASS  activation block is readable  (hash e653d57e...)
+PASS  activation block is readable  (hash cb3d9022865db421b7c36582f461571b9f4e78209db7e0b281df4b71208261aa)
 PASS  chain grows after activation  (tip 120, expected 120)
-PASS  funded key has a spendable block reward  (21 spendable outputs for tmVyvHg46HFaiRbHuB5pVxNQ4Nj7YRjxdjc at tip 120)
+PASS  funded key has a spendable block reward  (21 spendable outputs for tmR9hqpF8N5vRERT3esi6PCfSGe1b81huxW at tip 120)
+PASS  shielded rewards cross the boundary  (109 orchard 1, 110 ironwood 1)
 PASS  project rpc-smoke  (exit 0, 0.2s, log out/nu6_3/project-rpc-smoke.log)
-PASS  project spend  (exit 0, 0.6s, log out/nu6_3/project-spend.log)
+PASS  project spend  (exit 0, 1s, log out/nu6_3/project-spend.log)
 REHEARSAL PASSED  report: out/nu6_3/report.json
 ```
-
-`examples/nu7.toml` rehearses NU7 on `zfnd/zebra:7.0.0-rc.0`, the first Zebra image that knows NU7.
-
-`examples/light_server.toml` adds lightwalletd in front of the node.
-
-`examples/zaino.toml` puts Zaino in front of the node.
-
-`examples/zakura.toml` rehearses NU6.3 on Zakura, a Zebra fork, with lightwalletd.
-
-`examples/failing_project.toml` is the negative control. The node activates the upgrade fine, but its project exits with code 3, so the whole run fails.
 
 ## Usage
 
@@ -63,8 +54,6 @@ zrehearse --help
 | `--out <dir>` | Where to write `report.json` and the logs. The default is `out/<plan file name>/`. |
 | `--keep` | Leave the zebrad container running after the run. zrehearse prints its name and RPC URL. |
 
-zrehearse calls the `docker` CLI rather than the Docker API, because every machine that can run the rehearsal already has it. The container is removed when the run ends, including when it fails. Each container carries the label `zrehearse`. If you interrupt a run with Ctrl-C, clean up with `docker rm -f $(docker ps -aq --filter label=zrehearse)`.
-
 ## The plan file
 
 ```toml
@@ -83,82 +72,80 @@ run = "cargo test --test upgrade -- --nocapture"
 timeout_secs = 900
 ```
 
+See [`examples/`](examples/) for reference plan files.
+
 | Field | Default | Meaning |
 |---|---|---|
 | `name` | required | Free text, copied into the report |
-| `node.image` | required | Zebra or Zakura image to run. The image must know both upgrade names. |
-| `node.ready_timeout_secs` | `120` | How long to wait for zebrad's RPC to answer |
-| `node.config` | none | A TOML table merged into the generated node config, for settings that one node or version needs |
-| `node.env` | none | Extra environment variables for the node container |
-| `upgrade.name` | required | The upgrade under test, as Zebra names it, for example `NU6.3`. NU5 and later are supported. |
-| `upgrade.previous` | required | The upgrade active before it, for example `NU6.2` |
-| `upgrade.height` | `110` | Activation height, 3 or more. `height + blocks_after` must be above 100, so that the funded key has a spendable block reward. |
-| `upgrade.blocks_after` | `10` | Blocks to mine after activation, before projects run |
+| `node.image` | required | Zebra or Zakura image. It must know both upgrade names. |
+| `node.ready_timeout_secs` | `120` | Seconds to wait for the node's RPC |
+| `node.config` | none | TOML merged into the node config |
+| `node.env` | none | Extra env vars for the node |
+| `upgrade.name` | required | Upgrade under test, for example `NU6.3`. NU5 or later. |
+| `upgrade.previous` | required | Upgrade active before it, for example `NU6.2` |
+| `upgrade.height` | `110` | Activation height, 3 or more. `height + blocks_after` must be above 100. |
+| `upgrade.blocks_after` | `10` | Blocks to mine after activation |
 | `project.name` | required | Letters, digits, `-` and `_`. It names the log file. |
-| `project.run` | required | Shell command, run with `sh -c` from the plan file's directory |
-| `project.timeout_secs` | `600` | The project fails if it runs longer. zrehearse then stops the `sh` process, but not the processes that `sh` started. |
-| `funding.shielded_address` | public test address | The regtest Unified Address (`uregtest1...`) that receives the shielded rewards |
-| `light_server.kind` | none | `lightwalletd` or `zaino`. Leave out the `[light_server]` table to run without a light server. |
-| `light_server.image` | required with `kind` | Light server image, for example `electriccoinco/lightwalletd:v0.5.4` or `zingodevops/zaino:0.10.1-no-tls`. Zaino needs a `-no-tls` tag. |
-| `light_server.ready_timeout_secs` | `120` | How long the light server may take to serve the block at each tip |
-| `light_server.config` | none | A TOML table merged into the generated `zainod.toml`. Zaino only. |
-| `light_server.env` | none | Extra environment variables for the light server container |
-| `light_server.args` | none | Extra arguments after zrehearse's own, for example lightwalletd flags |
+| `project.run` | required | Command for `sh -c`, run from the plan file's directory |
+| `project.timeout_secs` | `600` | Seconds before the project fails. Processes that `sh` started keep running. |
+| `funding.shielded_address` | public test address | Regtest Unified Address (`uregtest1...`) for the shielded rewards |
+| `light_server.kind` | none | `lightwalletd` or `zaino`. Leave out `[light_server]` for no light server. |
+| `light_server.image` | required with `kind` | For example `electriccoinco/lightwalletd:v0.5.4`. Zaino needs a `-no-tls` tag. |
+| `light_server.ready_timeout_secs` | `120` | Seconds to wait for the light server to serve each tip |
+| `light_server.config` | none | TOML merged into `zainod.toml`. Zaino only. |
+| `light_server.env` | none | Extra env vars for the light server |
+| `light_server.args` | none | Extra arguments, for example lightwalletd flags |
 
-zrehearse owns the settings that its checks depend on. These are the network name, the activation heights, the RPC listen address, cookie auth and the miner address, and the light server's RPC target and gRPC bind address. A plan that sets one of them, in a config table or as an env var, is rejected with the name of the setting. Every other setting goes to the container unchanged. Thus a node or light server release that needs a new setting needs no zrehearse release. `examples/zakura.toml` uses `[node.config]` for the lockbox disbursement that Zakura requires.
+A plan cannot set the network name, the activation heights, the RPC address, cookie auth, the miner address, or the light server's RPC target and gRPC address. zrehearse rejects such a plan and names the setting. All other settings go to the container unchanged.
 
-The node config sets only two heights. `previous` activates at height 2, and the upgrade under test activates at your height. Zebra activates the upgrades before `previous` at height 2 or lower. Later upgrades are left out, so they never activate. zrehearse has no list of upgrades. Zebra checks the names and their order.
+`previous` activates at height 2 and the upgrade under test at `upgrade.height`. Later upgrades never activate. Zebra checks the upgrade names and their order.
 
 ## What gets checked
 
-zrehearse reads `getblockchaininfo` and compares it with the plan.
+1. Before activation, the chain tip has the branch ID of `previous`.
+2. At the same tip, the upgrade is `pending` and the next block has its branch ID.
+3. At the activation height, the upgrade is `active`.
+4. `getblock` returns the activation block.
+5. The chain grows by `blocks_after` blocks.
+6. The funded key has a spendable block reward.
+7. The coinbases before and at activation pay a shielded pool, for example `109 orchard 1, 110 ironwood 1`. This check runs when both blocks come after block 100.
 
-1. One block before the activation height, `consensus.chaintip` is the branch ID of `previous`.
-2. At the same tip, the upgrade is `pending` at the planned height, and `consensus.nextblock` is its branch ID.
-3. At the activation height, the upgrade is `active` and `consensus.chaintip` is its branch ID.
-4. `getblock` can return the activation block.
-5. After mining `blocks_after` more blocks, the tip is where it should be.
-6. `getaddressutxos` shows a block reward of the funded key that the next block can spend.
-7. The coinbases of the block before activation and of the activation block pay a shielded output. The detail names the pool, for example `109 orchard 1, 110 ironwood 1` for NU6.3. This check runs when both blocks come after block 100.
+With a light server, zrehearse starts it one block before activation and compares its gRPC answers with zebrad.
 
-With a light server, zrehearse starts it at one block before activation, so it sees the activation block arrive. Then it calls the light server over gRPC and compares the answers with zebrad.
+8. It serves the block before activation.
+9. It serves the tip after activation.
+10. `GetLightdInfo` reports the new branch ID.
+11. `GetBlock` hashes agree with zebrad.
+12. The compact blocks carry the shielded rewards.
+13. `GetTreeState` agrees with `z_gettreestate`.
+14. `GetSubtreeRoots` agrees with `z_getsubtreesbyindex`.
 
-8. One block before activation, the light server serves that block.
-9. After activation, it serves the block at the tip.
-10. `GetLightdInfo` reports the branch ID of the upgrade.
-11. `GetBlock` at the activation height and at the tip gives the same hashes as zebrad.
-12. The compact blocks at those heights carry the shielded rewards (`outputs`, `actions` or `ironwoodActions`).
-13. `GetTreeState` at the same heights gives the same Sapling and Orchard trees as `z_gettreestate`.
-14. `GetSubtreeRoots` streams to the end for Sapling and Orchard, with as many roots as `z_getsubtreesbyindex`.
+The gRPC calls use `fullstorydev/grpcurl:v1.9.3` and the lightwallet-protocol v0.5.0 protos in `proto/`.
 
-zrehearse makes the gRPC calls with `fullstorydev/grpcurl:v1.9.3` in Docker. It uses the `.proto` files of lightwallet-protocol v0.5.0 in `proto/`, because Zaino has no gRPC reflection. The light server and grpcurl share zebrad's network namespace, so zrehearse creates no Docker network.
-
-Projects run only when all checks pass. If the node never reached the planned state, a project failure would tell you nothing about your code, so projects are marked skipped instead.
+Projects run only when all checks pass. Otherwise they are skipped.
 
 ## What your project gets
 
-The project command runs with these environment variables.
-
 | Variable | Example |
 |---|---|
-| `ZREHEARSE_RPC_URL` | `http://127.0.0.1:32768` (zebrad JSON-RPC, no auth) |
+| `ZREHEARSE_RPC_URL` | `http://127.0.0.1:32768`, zebrad JSON-RPC without auth |
 | `ZREHEARSE_UPGRADE` | `NU6.3` |
 | `ZREHEARSE_ACTIVATION_HEIGHT` | `110` |
-| `ZREHEARSE_BRANCH_ID` | `37a5165b`, as zebrad reports it |
+| `ZREHEARSE_BRANCH_ID` | `37a5165b` |
 | `ZREHEARSE_PREVIOUS_UPGRADE` | `NU6.2` |
-| `ZREHEARSE_PREVIOUS_BRANCH_ID` | `5437f330`, as zebrad reports it |
+| `ZREHEARSE_PREVIOUS_BRANCH_ID` | `5437f330` |
 | `ZREHEARSE_TIP` | `120` |
 | `ZREHEARSE_FUNDED_ADDRESS` | `tmV6ufuf8ERqa6nh5CdiyLyzvhXrpAojC7R` |
-| `ZREHEARSE_FUNDED_KEY` | The secret key of that address in WIF, for the compressed public key |
-| `ZREHEARSE_SHIELDED_ADDRESS` | The Unified Address that receives the shielded rewards |
-| `ZREHEARSE_SHIELDED_MNEMONIC` | The seed phrase of that address. Set only with the default address. |
-| `ZREHEARSE_LIGHTWALLETD_URL` | `http://127.0.0.1:32895`, the light server's gRPC endpoint without TLS. Set only with a `[light_server]`. |
+| `ZREHEARSE_FUNDED_KEY` | The WIF secret key of that address |
+| `ZREHEARSE_SHIELDED_ADDRESS` | The Unified Address of the shielded rewards |
+| `ZREHEARSE_SHIELDED_MNEMONIC` | Its seed phrase. Set only with the default address. |
+| `ZREHEARSE_LIGHTWALLETD_URL` | `http://127.0.0.1:32895`, gRPC without TLS. Set only with a light server. |
 
-zrehearse makes a new transparent key for each run, and blocks 1 to 100 pay their rewards to that key. Zcash lets a block reward be spent only 100 blocks after its block. With the default heights, the next block can spend the rewards of blocks 1 to 21 when projects run, and all of them were mined before activation. Zebra on regtest permits a block reward to be spent to a transparent address. Thus a project can sign a transaction with its own code and send it with `sendrawtransaction`. `getaddressutxos` lists the outputs of the address. `report.json` gives the address as `funded_address`.
+Blocks 1 to 100 pay a new transparent key for each run. A block reward is spendable 100 blocks later, so at the default tip the rewards of blocks 1 to 21 are spendable. A project can sign a transaction with `ZREHEARSE_FUNDED_KEY` and send it with `sendrawtransaction`.
 
-Every block after block 100 pays a shielded address with `generatetoaddress`, because shielded rewards need no maturity (ZIP 213). The default address is ZIP 32 account 0 of zrehearse's public test seed phrase (`hidden` x 23 + `protect`), and projects get that phrase. Everyone can read it, so never use it for real funds. Set `funding.shielded_address` to use your own Unified Address and keep your own seed phrase. A wallet that scans from a birthday needs a birthday of 2 or more, because lightwalletd has no tree state at height 1. A node without `generatetoaddress`, such as Zakura 1.6.0, mines every block to the transparent key, and the run has no shielded funding. A plan that sets `funding.shielded_address` then fails with exit code 2.
+Later blocks pay the shielded address. The default address is account 0 of zrehearse's public test seed phrase (`hidden` x 23 + `protect`). Everyone can read it, so never use it for real funds. Set `funding.shielded_address` to use your own address. A wallet birthday must be 2 or more. A node without `generatetoaddress`, such as Zakura 1.6.0, gives no shielded funds, and a plan with its own address then fails with exit code 2.
 
-`examples/spend.rs` is a sample project of this kind. Both example plans run it. It signs three spends with its own ZIP 244 code. The node must accept the spend for the new branch ID. It must reject the spend for the previous branch ID, and also the spend with the new branch ID in its header but a sighash for the previous branch.
+`examples/spend.rs` is a sample project. The node must accept a spend that is signed for the new branch ID and reject spends that are signed for the previous one.
 
 Exit code 0 means pass. Anything else, or a timeout, means fail.
 
