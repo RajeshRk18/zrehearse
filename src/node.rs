@@ -137,19 +137,22 @@ impl Node {
             .context("getblockcount is not a height")
     }
 
-    /// Mines `n` blocks to the miner address with the regtest-only `generate` RPC.
+    /// Mines `n` blocks to the miner address with the regtest-only `generate`
+    /// RPC. Each call mines one block, so that a slow block does not reach
+    /// the RPC timeout.
     pub fn mine(&self, n: u32) -> Result<()> {
-        if n > 0 {
-            self.rpc("generate", json!([n]))?;
+        for _ in 0..n {
+            self.rpc("generate", json!([1]))?;
         }
         Ok(())
     }
 
     /// Mines `n` blocks that pay `address`, with the regtest-only
-    /// `generatetoaddress` RPC.
+    /// `generatetoaddress` RPC. A shielded coinbase needs a proof, which takes
+    /// about 6 s on a CI runner, so each call mines one block.
     pub fn mine_to(&self, n: u32, address: &str) -> Result<()> {
-        if n > 0 {
-            self.rpc("generatetoaddress", json!([n, address]))?;
+        for _ in 0..n {
+            self.rpc("generatetoaddress", json!([1, address]))?;
         }
         Ok(())
     }

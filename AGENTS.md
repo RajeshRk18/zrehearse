@@ -45,7 +45,11 @@ section "Limits".
 - zcash_protocol 0.10.6 has NU7 only as the placeholder `0xffffffff`. Thus
   `examples/spend.rs` computes the ZIP 244 sighash itself. Do not replace it
   with the zcash crates until they have the real NU7 branch ID `77190ad9`.
-- Zebra 6.2.3 mines about 0.12 s per block, so one rehearsal takes about 20 s.
+- Zebra 6.2.3 mines a transparent block in about 0.12 s. A block after block
+  100 pays a shielded coinbase, which needs a proof. On a CI runner one such
+  block takes about 6 s, and the first one about 18 s. Thus zrehearse mines
+  one block per RPC call. Do not mine many blocks in one call, because the
+  call then reaches the 60 s RPC timeout.
 - Docker can run out of address pools for new networks on hosts with many
   networks. Thus zrehearse creates no network. The light server and grpcurl
   join zebrad's network namespace with `--network container:<zebrad>`.
