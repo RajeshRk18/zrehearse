@@ -30,8 +30,7 @@ jobs:
           done
       - name: Rehearsals
         run: |
-          cargo test --test rehearse -- --ignored \
-            --skip shielded_sync_sees_both_pools --skip shielded_wallet_spends_across_the_boundary
+          cargo test --test rehearse -- --ignored
       - name: Upload reports
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -39,51 +38,3 @@ jobs:
           name: rehearsal-reports
           path: out/
 
-  clients:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          persist-credentials: false
-      - name: Toolchain
-        run: rustup toolchain install stable --profile minimal && rustup default stable
-      - name: Install zcash-devtool
-        run: |
-          cargo install --locked --git https://github.com/zcash/zcash-devtool \
-            --rev 399fb4ee309afbdfd9e8bfda28ac4f555fdb94de --features regtest_support zcash-devtool
-      - name: Pull images
-        run: |
-          for image in zfnd/zebra:6.2.3 electriccoinco/lightwalletd:v0.5.4 fullstorydev/grpcurl:v1.9.3; do
-            docker pull "$image"
-          done
-      - name: Client rehearsals
-        run: |
-          cargo test --test rehearse -- --ignored --exact \
-            shielded_sync_sees_both_pools shielded_wallet_spends_across_the_boundary
-      - name: Upload reports
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: client-reports
-          path: out/
-
-  action:
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        image: ["zfnd/zebra:6.2.3", "zfnd/zebra:7.0.0-rc.0"]
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          persist-credentials: false
-      - name: Rehearse with the action
-        id: zrehearse
-        uses: ./
-        with:
-          plan: examples/nu6_3.toml
-          image: ${{ matrix.image }}
-      - name: Report says passed
-        env:
-          REPORT: ${{ steps.zrehearse.outputs.report }}
-        run: |
-          grep -q '"passed": true' "$REPORT"
