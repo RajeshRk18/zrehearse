@@ -105,7 +105,7 @@ timeout_secs = 900
 | `light_server.env` | none | Extra environment variables for the light server container |
 | `light_server.args` | none | Extra arguments after zrehearse's own, for example lightwalletd flags |
 
-zrehearse owns the settings that its checks depend on. These are the network name, the activation heights, the RPC listen address, cookie auth and the miner address, and the light server's RPC target and gRPC bind address. A plan that sets one of them is rejected with the name of the setting. Every other setting goes to the container unchanged. Thus a node or light server release that needs a new setting needs no zrehearse release. `examples/zakura.toml` uses `[node.config]` for the lockbox disbursement that Zakura requires.
+zrehearse owns the settings that its checks depend on. These are the network name, the activation heights, the RPC listen address, cookie auth and the miner address, and the light server's RPC target and gRPC bind address. A plan that sets one of them, in a config table or as an env var, is rejected with the name of the setting. Every other setting goes to the container unchanged. Thus a node or light server release that needs a new setting needs no zrehearse release. `examples/zakura.toml` uses `[node.config]` for the lockbox disbursement that Zakura requires.
 
 The node config sets only two heights. `previous` activates at height 2, and the upgrade under test activates at your height. Zebra activates the upgrades before `previous` at height 2 or lower. Later upgrades are left out, so they never activate. zrehearse has no list of upgrades. Zebra checks the names and their order.
 

@@ -156,15 +156,20 @@ impl Plan {
 
     fn validate(&self) -> Result<()> {
         reject_owned_keys("node.config", &self.node.config, NODE_CONFIG_KEYS)?;
-        reject_owned_env("node.env", &self.node.env, NODE_ENV_SUFFIXES)?;
+        reject_owned_env(
+            "node.env",
+            &self.node.env,
+            &["zebra_", "zakura_"],
+            NODE_CONFIG_KEYS,
+        )?;
         if let Some(ls) = &self.light_server {
             if !ls.config.is_empty() && matches!(ls.kind, LightServerKind::Lightwalletd) {
                 bail!(
                     "light_server.config is only for zaino. Use light_server.args for lightwalletd"
                 );
             }
-            reject_owned_keys("light_server.config", &ls.config, &[&["network"]])?;
-            reject_owned_env("light_server.env", &ls.env, ZAINO_ENV_SUFFIXES)?;
+            reject_owned_keys("light_server.config", &ls.config, ZAINO_CONFIG_KEYS)?;
+            reject_owned_env("light_server.env", &ls.env, &["zaino_"], ZAINO_CONFIG_KEYS)?;
             if let Some(arg) = ls.args.iter().find(|a| {
                 LIGHTWALLETD_FLAGS
                     .iter()
@@ -260,39 +265,54 @@ const NODE_CONFIG_KEYS: &[&[&str]] = &[
     &["rpc", "enable_cookie_auth"],
     &["mining", "miner_address"],
 ];
-/// Node env vars that zrehearse sets, after the `ZEBRA_` or `ZAKURA_` prefix.
-const NODE_ENV_SUFFIXES: &[&str] = &[
-    "_RPC__LISTEN_ADDR",
-    "_RPC__ENABLE_COOKIE_AUTH",
-    "_MINING__MINER_ADDRESS",
-];
-/// Zaino env vars that zrehearse sets.
-const ZAINO_ENV_SUFFIXES: &[&str] = &[
-    "_VALIDATOR_SETTINGS__VALIDATOR_JSONRPC_LISTEN_ADDRESS",
-    "_GRPC_SETTINGS__LISTEN_ADDRESS",
+/// `zainod.toml` keys that zrehearse writes or sets through env.
+const ZAINO_CONFIG_KEYS: &[&[&str]] = &[
+    &["network"],
+    &["validator_settings", "validator_jsonrpc_listen_address"],
+    &["grpc_settings", "listen_address"],
 ];
 /// lightwalletd flags that zrehearse sets.
 const LIGHTWALLETD_FLAGS: &[&str] = &["--grpc-bind-addr", "--rpchost", "--rpcport"];
 
+/// Rejects an owned key, and a value that is not a table where an owned key
+/// needs one, because `merge` would replace that table.
 fn reject_owned_keys(field: &str, table: &toml::Table, owned: &[&[&str]]) -> Result<()> {
     for path in owned {
-        let mut at = Some(table);
+        let mut at = table;
         for (i, key) in path.iter().enumerate() {
-            match at.and_then(|t| t.get(*key)) {
-                Some(_) if i + 1 == path.len() => {
-                    bail!("{field} sets {}, which zrehearse owns", path.join("."))
-                }
-                Some(toml::Value::Table(t)) => at = Some(t),
-                _ => break,
+            match at.get(*key) {
+                Some(toml::Value::Table(t)) if i + 1 < path.len() => at = t,
+                Some(_) => bail!(
+                    "{field} sets {}, which zrehearse owns",
+                    path[..=i].join(".")
+                ),
+                None => break,
             }
         }
     }
     Ok(())
 }
 
-fn reject_owned_env(field: &str, env: &BTreeMap<String, String>, suffixes: &[&str]) -> Result<()> {
-    if let Some(name) = env.keys().find(|k| suffixes.iter().any(|s| k.ends_with(s))) {
-        bail!("{field} sets {name}, which zrehearse owns");
+/// Rejects an env var that sets an owned key or a table around one. The
+/// nodes read `ZEBRA_RPC__LISTEN_ADDR` as `rpc.listen_addr`.
+fn reject_owned_env(
+    field: &str,
+    env: &BTreeMap<String, String>,
+    prefixes: &[&str],
+    owned: &[&[&str]],
+) -> Result<()> {
+    for name in env.keys() {
+        let lower = name.to_ascii_lowercase();
+        let Some(path) = prefixes.iter().find_map(|p| lower.strip_prefix(p)) else {
+            continue;
+        };
+        let path: Vec<&str> = path.split("__").collect();
+        if owned
+            .iter()
+            .any(|o| o.iter().zip(&path).all(|(a, b)| a == b))
+        {
+            bail!("{field} sets {name}, which zrehearse owns");
+        }
     }
     Ok(())
 }
@@ -441,14 +461,38 @@ mod tests {
         assert!(
             err("[node.config.mining]\nminer_address = \"x\"\n").contains("mining.miner_address")
         );
+        assert_eq!(
+            err("[node.config.network]\ntestnet_parameters = \"x\"\n"),
+            "node.config sets network.testnet_parameters, which zrehearse owns"
+        );
+        assert!(err("[node.config]\nnetwork = 1\n").contains("sets network,"));
+        for var in [
+            "ZAKURA_RPC__LISTEN_ADDR",
+            "ZEBRA_NETWORK__NETWORK",
+            "ZEBRA_NETWORK__TESTNET_PARAMETERS__ACTIVATION_HEIGHTS__NU7",
+        ] {
+            assert!(err(&format!("[node.env]\n{var} = \"x\"\n")).contains(var));
+        }
+        let zaino = "[light_server]\nkind = \"zaino\"\nimage = \"x\"\n";
         assert!(
-            err("[node.env]\nZAKURA_RPC__LISTEN_ADDR = \"x\"\n")
-                .contains("ZAKURA_RPC__LISTEN_ADDR")
+            err(&format!(
+                "{zaino}[light_server.config.grpc_settings]\nlisten_address = \"y\"\n"
+            ))
+            .contains("grpc_settings.listen_address")
+        );
+        assert!(
+            err(&format!(
+                "{zaino}[light_server.env]\nZAINO_NETWORK = \"y\"\n"
+            ))
+            .contains("ZAINO_NETWORK")
         );
         let lwd = "[light_server]\nkind = \"lightwalletd\"\nimage = \"x\"\n";
         assert!(err(&format!("{lwd}args = [\"--rpchost=y\"]\n")).contains("--rpchost=y"));
         assert!(err(&format!("{lwd}[light_server.config]\na = 1\n")).contains("only for zaino"));
-        let ok = format!("{lwd}args = [\"--log-level\", \"7\"]\n[light_server.env]\nA = \"1\"\n");
+        let ok = format!(
+            "{lwd}args = [\"--log-level\", \"7\"]\n[light_server.env]\nA = \"1\"\n\
+             [node.env]\nZEBRA_NETWORK__CACHE_DIR = \"/c\"\n"
+        );
         assert!(plan(&format!("name = \"t\"\n{NODE}{ok}{up}")).is_ok());
     }
 
