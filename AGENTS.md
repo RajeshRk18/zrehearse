@@ -27,11 +27,14 @@ section "Limits".
 
 - Docker must be running.
 - The Docker tests need `zfnd/zebra:6.2.3`, `zfnd/zebra:7.0.0-rc.0`,
-  `zakuracore/zakura:1.6.0`,
-  `electriccoinco/lightwalletd:v0.5.4`, `zingodevops/zaino:0.10.1-no-tls` and
-  `fullstorydev/grpcurl:v1.9.3`. The light server images are amd64 only.
-  Docker runs them on arm64 hosts with emulation.
+  `zakuracore/zakura:1.6.0`, `electriccoinco/lightwalletd:v0.5.4`,
+  `zingodevops/zaino:0.10.1-no-tls` and `fullstorydev/grpcurl:v1.9.3`. The
+  light server images are amd64 only. Docker runs them on arm64 hosts with
+  emulation.
 - The Rust toolchain must support edition 2024.
+
+## Known failure patterns
+
 - A run leaves a container after Ctrl-C. Remove it with
   `docker rm -f $(docker ps -aq --filter label=zrehearse)`.
 - A plan with `height + blocks_after` of 100 or less is rejected. A block
@@ -54,11 +57,11 @@ section "Limits".
 - Zakura rejects an NU6.1 activation block without a lockbox disbursement.
   Zebra 6.2.3 panics on a P2PKH lockbox address. The address must be P2SH.
   Plans set it in `[node.config]`. zrehearse does not set it.
-- Node-specific settings belong in `[node.config]` and `[node.env]` of a plan,
-  not in zrehearse's code. Add code only for what a plan cannot set.
 
 ## Guardrails
 
+- Node-specific settings belong in `[node.config]` and `[node.env]` of a plan,
+  not in zrehearse's code. Add code only for what a plan cannot set.
 - `.github/workflows/ci.yml` is the single source of truth for the check
   commands. If you change a command, change the table above and the README
   "Development" section in the same commit.
