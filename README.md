@@ -97,7 +97,7 @@ timeout_secs = 900
 | `project.name` | required | Letters, digits, `-` and `_`. It names the log file. |
 | `project.run` | required | Shell command, run with `sh -c` from the plan file's directory |
 | `project.timeout_secs` | `600` | The project fails if it runs longer. zrehearse then stops the `sh` process, but not the processes that `sh` started. |
-| `funding.shielded_address` | public test address | The Unified Address that receives the shielded rewards |
+| `funding.shielded_address` | public test address | The regtest Unified Address (`uregtest1...`) that receives the shielded rewards |
 | `light_server.kind` | none | `lightwalletd` or `zaino`. Leave out the `[light_server]` table to run without a light server. |
 | `light_server.image` | required with `kind` | Light server image, for example `electriccoinco/lightwalletd:v0.5.4` or `zingodevops/zaino:0.10.1-no-tls`. Zaino needs a `-no-tls` tag. |
 | `light_server.ready_timeout_secs` | `120` | How long the light server may take to serve the block at each tip |
@@ -156,7 +156,7 @@ The project command runs with these environment variables.
 
 zrehearse makes a new transparent key for each run, and blocks 1 to 100 pay their rewards to that key. Zcash lets a block reward be spent only 100 blocks after its block. With the default heights, the next block can spend the rewards of blocks 1 to 21 when projects run, and all of them were mined before activation. Zebra on regtest permits a block reward to be spent to a transparent address. Thus a project can sign a transaction with its own code and send it with `sendrawtransaction`. `getaddressutxos` lists the outputs of the address. `report.json` gives the address as `funded_address`.
 
-Blocks 1 to 100 pay the transparent key. Every later block pays a shielded address with `generatetoaddress`, because shielded rewards need no maturity (ZIP 213). The default address is ZIP 32 account 0 of zrehearse's public test seed phrase (`hidden` x 23 + `protect`), and projects get that phrase. Everyone can read it, so never use it for real funds. Set `funding.shielded_address` to use your own Unified Address and keep your own seed phrase. A wallet that scans from a birthday needs a birthday of 2 or more, because lightwalletd has no tree state at height 1. A node without `generatetoaddress`, such as Zakura 1.6.0, mines every block to the transparent key, and the run has no shielded funding.
+Blocks 1 to 100 pay the transparent key. Every later block pays a shielded address with `generatetoaddress`, because shielded rewards need no maturity (ZIP 213). The default address is ZIP 32 account 0 of zrehearse's public test seed phrase (`hidden` x 23 + `protect`), and projects get that phrase. Everyone can read it, so never use it for real funds. Set `funding.shielded_address` to use your own Unified Address and keep your own seed phrase. A wallet that scans from a birthday needs a birthday of 2 or more, because lightwalletd has no tree state at height 1. A node without `generatetoaddress`, such as Zakura 1.6.0, mines every block to the transparent key, and the run has no shielded funding. A plan that sets `funding.shielded_address` then fails with exit code 2.
 
 `examples/spend.rs` is a sample project of this kind. Both example plans run it. It signs three spends with its own ZIP 244 code. The node must accept the spend for the new branch ID. It must reject the spend for the previous branch ID, and also the spend with the new branch ID in its header but a sighash for the previous branch.
 

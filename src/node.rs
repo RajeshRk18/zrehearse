@@ -9,6 +9,22 @@ use std::time::{Duration, Instant};
 /// Port zebrad listens on inside the container.
 pub const RPC_PORT: u16 = 18232;
 
+/// An error reply of the node. Code -32601 means that it has no such method.
+#[derive(Debug)]
+pub struct RpcError {
+    method: String,
+    pub code: i64,
+    error: Value,
+}
+
+impl std::fmt::Display for RpcError {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{} failed: {}", self.method, self.error)
+    }
+}
+
+impl std::error::Error for RpcError {}
+
 pub struct Node {
     pub container: Container,
     pub rpc_url: String,
@@ -101,7 +117,12 @@ impl Node {
             .read_json()
             .with_context(|| format!("reading {method} reply"))?;
         if let Some(err) = reply.get("error").filter(|e| !e.is_null()) {
-            bail!("{method} failed: {err}");
+            return Err(RpcError {
+                method: method.to_string(),
+                code: err["code"].as_i64().unwrap_or_default(),
+                error: err.clone(),
+            }
+            .into());
         }
         reply
             .get("result")

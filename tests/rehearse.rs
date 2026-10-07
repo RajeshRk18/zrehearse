@@ -279,6 +279,27 @@ fn zakura_rehearsal_passes() {
     assert!(run.stdout.contains("no shielded funding"), "{}", run.stdout);
 }
 
+/// Zakura 1.6.0 has no generatetoaddress, so it cannot pay a plan's own
+/// shielded address, and the run is a setup error.
+#[test]
+#[ignore = "needs Docker and zakuracore/zakura:1.6.0"]
+fn zakura_with_own_shielded_address_is_a_setup_error() {
+    let (output, text, report) = rehearse_toml(
+        "zakura-own-address",
+        "name = \"t\"\n[node]\nimage = \"zakuracore/zakura:1.6.0\"\n\
+         [node.config.network.testnet_parameters]\n\
+         lockbox_disbursements = [{ address = \"t26YoyZ1iPgiMEWL4zGUm74eVWfhyDMXzY2\", amount = 0 }]\n\
+         [upgrade]\nname = \"NU6.3\"\nprevious = \"NU6.2\"\n\
+         [funding]\nshielded_address = \"uregtest1own\"\n",
+    );
+    assert_eq!(output.status.code(), Some(2), "{text}");
+    let error = report["setup_error"].as_str().unwrap();
+    assert!(
+        error.contains("cannot pay funding.shielded_address"),
+        "{error}"
+    );
+}
+
 /// Without a lockbox disbursement in `node.config`, Zakura rejects the NU6.1
 /// activation block, and the report names the cause.
 #[test]

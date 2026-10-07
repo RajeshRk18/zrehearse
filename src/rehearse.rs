@@ -4,8 +4,8 @@
 use crate::docker::{self, Container};
 use crate::key::FundedKey;
 use crate::lightserver::{self, LightServer, display_hash};
-use crate::node::Node;
-use crate::plan::{COINBASE_MATURITY, LightServerKind, Plan, Project};
+use crate::node::{Node, RpcError};
+use crate::plan::{COINBASE_MATURITY, LightServerKind, PUBLIC_TEST_ADDRESS, Plan, Project};
 use anyhow::{Context, Result};
 use serde::Serialize;
 use serde_json::{Value, json};
@@ -551,7 +551,8 @@ fn record(report: &mut Report, name: &str, eval: impl FnOnce() -> Result<(bool, 
 /// so they are spendable when projects run. Later blocks pay the shielded
 /// address, because shielded rewards need no maturity (ZIP 213).
 /// A node without `generatetoaddress`, such as Zakura 1.6.0, mines every
-/// block to the transparent key, and the run has no shielded funding.
+/// block to the transparent key, and the run has no shielded funding. A plan
+/// that sets its own shielded address then fails.
 fn mine(node: &Node, report: &mut Report, n: u32) -> Result<()> {
     let tip = node.height()?;
     let transparent = n.min(COINBASE_MATURITY.saturating_sub(tip));
@@ -561,7 +562,16 @@ fn mine(node: &Node, report: &mut Report, n: u32) -> Result<()> {
         return node.mine(rest);
     };
     match node.mine_to(rest, &address) {
-        Err(e) if format!("{e:#}").contains("-32601") => {
+        Err(e)
+            if e.downcast_ref::<RpcError>()
+                .is_some_and(|r| r.code == -32601) =>
+        {
+            if address != PUBLIC_TEST_ADDRESS {
+                return Err(SetupError(format!(
+                    "the node has no generatetoaddress, so it cannot pay funding.shielded_address {address}"
+                ))
+                .into());
+            }
             report.shielded_address = None;
             node.mine(rest)
         }

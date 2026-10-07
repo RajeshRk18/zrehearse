@@ -178,6 +178,11 @@ impl Plan {
                 bail!("light_server.args sets {arg}, which zrehearse owns");
             }
         }
+        if let Some(a) = &self.funding.shielded_address
+            && !a.starts_with("uregtest1")
+        {
+            bail!("funding.shielded_address {a:?} is not a regtest Unified Address (uregtest1...)");
+        }
         let u = &self.upgrade;
         if u.name.is_empty() {
             bail!("upgrade.name must not be empty");
@@ -494,6 +499,16 @@ mod tests {
              [node.env]\nZEBRA_NETWORK__CACHE_DIR = \"/c\"\n"
         );
         assert!(plan(&format!("name = \"t\"\n{NODE}{ok}{up}")).is_ok());
+    }
+
+    #[test]
+    fn rejects_a_shielded_address_for_another_network() {
+        let err = plan(&format!(
+            "name = \"t\"\n{NODE}[upgrade]\nname = \"NU6.3\"\nprevious = \"NU6.2\"\n\
+             [funding]\nshielded_address = \"u1abc\"\n"
+        ))
+        .unwrap_err();
+        assert!(err.to_string().contains("not a regtest Unified Address"));
     }
 
     #[test]
